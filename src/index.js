@@ -171,93 +171,110 @@ async function handleArticleUnlock(request, env, catalog) {
 async function handleArticleSettingsUpdate(request, env, catalog) {
   const jsonMode = wantsJson(request);
   if (!(await isAdminAuthenticated(request, env))) {
-    if (jsonMode) return jsonResponse({ ok: false, error: '请先登录' }, 401);
+    if (jsonMode) return jsonResponse({ ok: false, error: '请重新登录后再保存' }, 401);
     return redirect('/login');
   }
 
-  const formData = await request.formData();
-  const path = normalizePagePath(String(formData.get('path') || '/'));
-  const article = findArticle(catalog, path);
+  let path = '/';
 
-  if (!article) {
-    console.warn('article settings update rejected: unknown article', { path });
-    if (jsonMode) return jsonResponse({ ok: false, error: '没有找到这篇文章' }, 404);
-    return redirect('/?error=unknown-article');
-  }
+  try {
+    const formData = await request.formData();
+    path = normalizePagePath(String(formData.get('path') || '/'));
+    const article = findArticle(catalog, path);
 
-  const action = normalizeArticleAction(String(formData.get('action') || 'password'));
-  const enteredPassword = String(formData.get('password') || '').trim();
-  const currentSetting = await getArticleSetting(env, path, article);
-  const currentPassword = await getArticlePassword(env, currentSetting);
-  const now = new Date().toISOString();
-  let notice = '设置已保存';
-  let setting;
-
-  if (action === 'encrypt') {
-    if (!enteredPassword) {
-      console.warn('article settings update rejected: encrypted without password', { path, action });
-      if (jsonMode) return jsonResponse({ ok: false, error: '请先设置密码' }, 400);
-      return redirect(`/?error=${encodeURIComponent('请先设置密码')}`);
+    if (!article) {
+      console.warn('article settings update rejected: unknown article', { path });
+      if (jsonMode) return jsonResponse({ ok: false, error: '没有找到这篇文章' }, 404);
+      return redirect('/?error=unknown-article');
     }
 
-    setting = {
-      encrypted: true,
-      passwordCipher: await encryptPassword(enteredPassword, env),
-      version: newSettingVersion(),
-      updatedAt: now,
-    };
-    notice = '文章已加密';
-  } else if (action === 'decrypt') {
-    setting = {
-      encrypted: false,
-      version: newSettingVersion(),
-      updatedAt: now,
-    };
-    if (currentPassword) {
-      setting.passwordCipher = await encryptPassword(currentPassword, env);
-    }
-    notice = '文章已解除加密';
-  } else {
-    const hasPassword = Boolean(enteredPassword);
-    setting = {
-      encrypted: currentSetting.encrypted && hasPassword,
-      version: newSettingVersion(),
-      updatedAt: now,
-    };
-    if (hasPassword) {
-      setting.passwordCipher = await encryptPassword(enteredPassword, env);
-      notice = '密码已设置';
+    const action = normalizeArticleAction(String(formData.get('action') || 'password'));
+    const enteredPassword = String(formData.get('password') || '').trim();
+    const currentSetting = await getArticleSetting(env, path, article);
+    const currentPassword = await getArticlePassword(env, currentSetting);
+    const now = new Date().toISOString();
+    let notice = '设置已保存';
+    let setting;
+
+    if (action === 'encrypt') {
+      if (!enteredPassword) {
+        console.warn('article settings update rejected: encrypted without password', { path, action });
+        if (jsonMode) return jsonResponse({ ok: false, error: '请先设置密码' }, 400);
+        return redirect(`/?error=${encodeURIComponent('请先设置密码')}`);
+      }
+
+      setting = {
+        encrypted: true,
+        passwordCipher: await encryptPassword(enteredPassword, env),
+        version: newSettingVersion(),
+        updatedAt: now,
+      };
+      notice = '文章已加密';
+    } else if (action === 'decrypt') {
+      setting = {
+        encrypted: false,
+        version: newSettingVersion(),
+        updatedAt: now,
+      };
+      if (currentPassword) {
+        setting.passwordCipher = await encryptPassword(currentPassword, env);
+      }
+      notice = '文章已解除加密';
     } else {
-      notice = currentSetting.encrypted ? '密码已清空，文章已解除加密' : '密码已清空';
+      const hasPassword = Boolean(enteredPassword);
+      setting = {
+        encrypted: currentSetting.encrypted && hasPassword,
+        version: newSettingVersion(),
+        updatedAt: now,
+      };
+      if (hasPassword) {
+        setting.passwordCipher = await encryptPassword(enteredPassword, env);
+        notice = '密码已设置';
+      } else {
+        notice = currentSetting.encrypted ? '密码已清空，文章已解除加密' : '密码已清空';
+      }
     }
+
+    await putArticleSetting(env, path, setting);
+    console.info('article settings updated', {
+      path,
+      action,
+      encrypted: setting.encrypted,
+      hasPassword: Boolean(await getArticlePassword(env, setting)),
+      passwordChanged: action === 'password',
+    });
+
+    const articleRow = await getArticleAdminRow(env, article);
+    const responseBody = {
+      ok: true,
+      notice,
+      article: articleRow,
+    };
+    const headers = {
+      'Set-Cookie': clearCookie(articleCookieName(path)),
+    };
+
+    if (jsonMode) return jsonResponse(responseBody, 200, headers);
+    return redirect(`/?notice=${encodeURIComponent(notice)}`, headers);
+  } catch (error) {
+    console.error('article settings update failed', { path, error });
+    const message = articleSettingsErrorMessage(error);
+
+    if (jsonMode) return jsonResponse({ ok: false, error: message }, 500);
+    return redirect(`/?error=${encodeURIComponent(message)}`);
   }
-
-  await putArticleSetting(env, path, setting);
-  console.info('article settings updated', {
-    path,
-    action,
-    encrypted: setting.encrypted,
-    hasPassword: Boolean(await getArticlePassword(env, setting)),
-    passwordChanged: action === 'password',
-  });
-
-  const articleRow = await getArticleAdminRow(env, article);
-  const responseBody = {
-    ok: true,
-    notice,
-    article: articleRow,
-  };
-  const headers = {
-    'Set-Cookie': clearCookie(articleCookieName(path)),
-  };
-
-  if (jsonMode) return jsonResponse(responseBody, 200, headers);
-  return redirect(`/?notice=${encodeURIComponent(notice)}`, headers);
 }
 
 function normalizeArticleAction(action) {
   if (action === 'encrypt' || action === 'decrypt' || action === 'password') return action;
   return 'password';
+}
+
+function articleSettingsErrorMessage(error) {
+  const message = error instanceof Error ? error.message : String(error || '');
+  if (message.includes('PASSWORD_CRYPTO_SECRET')) return '密码加密配置缺失，暂时无法保存密码';
+  if (message.includes('SHARE_PAGES_CONFIG')) return '配置存储不可用，暂时无法保存设置';
+  return '设置保存失败，请稍后重试';
 }
 
 function isRootPage(pathname) {
@@ -497,7 +514,8 @@ function articleSettingKey(path) {
 function wantsJson(request) {
   const accept = request.headers.get('Accept') || '';
   const requestedWith = request.headers.get('X-Requested-With') || '';
-  return accept.includes('application/json') || requestedWith === 'fetch';
+  const fetchMode = request.headers.get('Sec-Fetch-Mode') || '';
+  return accept.includes('application/json') || requestedWith === 'fetch' || fetchMode === 'cors';
 }
 
 function jsonResponse(body, status = 200, headers = {}) {
@@ -1188,23 +1206,39 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
       const submitArticleSetting = async (form, action, successMessage) => {
         const formData = new FormData(form);
         formData.set('action', action);
+        const actionUrl = new URL(form.getAttribute('action') || '/admin/article', window.location.href);
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 10000);
         setFormSaving(form, true);
         try {
-          const response = await fetch(form.action, {
+          const response = await fetch(actionUrl.toString(), {
             method: 'POST',
+            redirect: 'manual',
             headers: {
               Accept: 'application/json',
               'X-Requested-With': 'fetch',
             },
             body: formData,
+            signal: controller.signal,
           });
+          const contentType = response.headers.get('content-type') || '';
+          if (response.type === 'opaqueredirect' || response.status === 0) {
+            throw new Error('请重新登录后再保存');
+          }
+          if (!contentType.includes('application/json')) {
+            throw new Error(response.ok ? '请重新登录后再保存' : '设置保存失败');
+          }
           const result = await response.json().catch(() => ({}));
           if (!response.ok || !result.ok) {
             throw new Error(result.error || '设置保存失败');
           }
           updateRow(form, result.article);
           showToast(successMessage || result.notice || '设置已保存');
+        } catch (error) {
+          if (error.name === 'AbortError') throw new Error('保存超时，请重试');
+          throw error;
         } finally {
+          window.clearTimeout(timeout);
           setFormSaving(form, false);
         }
       };
@@ -1297,7 +1331,7 @@ function renderArticleManagerRow(article) {
         <span class="status">${status}</span>
       </div>
     </div>
-    <form data-article-form method="post" action="/admin/article">
+    <form data-article-form method="post" action="/admin/article" autocomplete="off">
       <input type="hidden" name="path" value="${escapeHtml(article.path)}" />
       <input type="hidden" name="action" value="password" />
       <div>
@@ -1309,7 +1343,7 @@ function renderArticleManagerRow(article) {
       </div>
       <div class="password-wrap">
         <label for="password-${shortHash(article.path)}">独立密码</label>
-        <input id="password-${shortHash(article.path)}" name="password" type="password" value="${escapeHtml(password)}" autocomplete="new-password" />
+        <input id="password-${shortHash(article.path)}" name="password" type="password" value="${escapeHtml(password)}" autocomplete="off" />
         <button class="icon-button" type="button" data-toggle-password aria-label="查看密码" title="查看密码" aria-pressed="false">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1468,6 +1502,7 @@ function htmlResponse(body, status = 200, headers = {}) {
     status,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
       ...headers,
     },
   });
