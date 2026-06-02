@@ -1,0 +1,3 @@
+[submodule "vendor/quickshare-cloudflare"]
+	path = vendor/quickshare-cloudflare
+	url = https://github.com/joeseesun/quickshare-cloudflare.git

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Share Pages</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f7f8fb;
+        --panel: #ffffff;
+        --text: #17202a;
+        --muted: #657282;
+        --line: #d8dee8;
+        --accent: #0f766e;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0f1720;
+          --panel: #162231;
+          --text: #edf2f7;
+          --muted: #aeb8c5;
+          --line: #2c3a4a;
+          --accent: #2dd4bf;
+        }
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: Inter, "SF Pro Display", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+      }
+
+      main {
+        width: min(720px, calc(100vw - 40px));
+        margin: 56px auto;
+      }
+
+      h1 {
+        margin: 0 0 10px;
+        font-size: 28px;
+        letter-spacing: 0;
+      }
+
+      p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.7;
+      }
+
+      .panel {
+        margin-top: 24px;
+        padding: 22px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      code {
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Share Pages</h1>
+      <p>Cloudflare Worker framework for a private HTML document index.</p>
+      <section class="panel">
+        <p>Log in at the root path to manage documents. Article metadata is loaded from Cloudflare KV and article bodies are loaded from Cloudflare R2.</p>
+      </section>
+    </main>
+  </body>
+</html>

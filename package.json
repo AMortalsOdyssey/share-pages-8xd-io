@@ -1,0 +1,15 @@
+{
+  "name": "share-pages-worker",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "scripts": {
+    "check": "wrangler deploy --dry-run --config wrangler.jsonc",
+    "deploy": "wrangler deploy --config wrangler.jsonc",
+    "dev": "wrangler dev --config wrangler.jsonc",
+    "import:html": "node scripts/import-html.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.96.0"
+  }
+}
