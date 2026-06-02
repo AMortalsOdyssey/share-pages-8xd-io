@@ -1,3 +1,5 @@
+import { marked } from 'marked';
+
 const ADMIN_COOKIE = 'share_pages_admin';
 const AUTH_TTL_SECONDS = 30 * 24 * 60 * 60;
 const CATALOG_KEY = 'share_pages:catalog';
@@ -335,6 +337,7 @@ function normalizeCatalogArticle(item) {
     title,
     path,
     r2Key,
+    sourceType: normalizeArticleSourceType(item.sourceType || item.contentType || '', r2Key),
     faviconKey: String(item.faviconKey || '').trim(),
     r2Prefix: String(item.r2Prefix || '').trim(),
     encrypted: Boolean(item.encrypted),
@@ -397,12 +400,19 @@ function articleAssetPath(article, pathname) {
 }
 
 async function fetchArticleAsset(request, env, article) {
-  const key = articleObjectKey(article, new URL(request.url).pathname);
+  const pathname = new URL(request.url).pathname;
+  const suffix = articleAssetPath(article, pathname);
+  const key = articleObjectKey(article, suffix);
   if (!key) return htmlResponse(renderErrorPage('页面不存在'), 404);
 
   const bucket = getContentBucket(env);
   const object = await bucket.get(key);
   if (!object) return htmlResponse(renderErrorPage('页面不存在'), 404);
+
+  if (suffix === 'index.html' && article.sourceType !== 'html') {
+    const rawContent = await object.text();
+    return htmlResponse(renderArticleSourceDocument(article, rawContent));
+  }
 
   const headers = new Headers();
   object.writeHttpMetadata(headers);
@@ -415,13 +425,453 @@ async function fetchArticleAsset(request, env, article) {
   });
 }
 
-function articleObjectKey(article, pathname) {
-  const suffix = articleAssetPath(article, pathname);
+function articleObjectKey(article, suffix) {
   if (!suffix || suffix.includes('..') || suffix.startsWith('/')) return '';
   if (suffix === 'index.html') return article.r2Key;
   if (suffix === 'favicon.svg' && article.faviconKey) return article.faviconKey;
   if (!article.r2Prefix) return '';
   return `${article.r2Prefix.replace(/\/?$/, '/')}${suffix}`;
+}
+
+function normalizeArticleSourceType(value, r2Key = '') {
+  const explicit = String(value || '').trim().toLowerCase();
+  if (['html', 'markdown', 'md', 'svg', 'mermaid', 'text', 'txt'].includes(explicit)) {
+    if (explicit === 'md') return 'markdown';
+    if (explicit === 'txt') return 'text';
+    return explicit;
+  }
+
+  const extension = pathExtension(r2Key).toLowerCase();
+  if (extension === 'md' || extension === 'markdown') return 'markdown';
+  if (extension === 'svg') return 'svg';
+  if (extension === 'mmd' || extension === 'mermaid') return 'mermaid';
+  if (extension === 'txt') return 'text';
+  return 'html';
+}
+
+function renderArticleSourceDocument(article, rawContent) {
+  if (article.sourceType === 'markdown') return renderMarkdownSourceDocument(article, rawContent);
+  if (article.sourceType === 'svg') return renderSvgSourceDocument(article, rawContent);
+  if (article.sourceType === 'mermaid') return renderMermaidSourceDocument(article, rawContent);
+  if (article.sourceType === 'text') return renderTextSourceDocument(article, rawContent);
+  return rawContent;
+}
+
+function renderMarkdownSourceDocument(article, markdown) {
+  const renderer = new marked.Renderer();
+  const originalCodeRenderer = renderer.code.bind(renderer);
+  const outlineItems = [];
+  const headingCounts = new Map();
+  const markdownBody = stripLeadingFrontmatter(markdown);
+
+  renderer.heading = function heading(token) {
+    const inlineHtml = this.parser.parseInline(token.tokens);
+    const headingText = cleanHeadingText(stripTags(inlineHtml) || token.text || '');
+    const id = uniqueHeadingId(headingText, headingCounts);
+    outlineItems.push({
+      id,
+      text: headingText,
+      depth: Math.min(Math.max(Number(token.depth) || 1, 1), 6),
+    });
+
+    return `<h${token.depth} id="${escapeHtml(id)}" data-outline-heading="${escapeHtml(id)}">${inlineHtml}</h${token.depth}>\n`;
+  };
+
+  renderer.code = (tokenOrCode, infostring, escaped) => {
+    const code = typeof tokenOrCode === 'object' && tokenOrCode !== null ? tokenOrCode.text : tokenOrCode;
+    const language = typeof tokenOrCode === 'object' && tokenOrCode !== null ? tokenOrCode.lang : infostring;
+    const normalizedLanguage = String(language || '').toLowerCase();
+
+    if (normalizedLanguage === 'mermaid' || isMermaidSource(code)) {
+      return `<div class="mermaid">${escapeHtml(code)}</div>`;
+    }
+
+    if (normalizedLanguage === 'svg') {
+      return `<div class="embedded-svg">${code}</div>`;
+    }
+
+    return originalCodeRenderer(tokenOrCode, infostring, escaped);
+  };
+
+  const htmlContent = marked.parse(markdownBody, {
+    gfm: true,
+    breaks: true,
+    renderer,
+  });
+
+  return renderSourceViewer(article, htmlContent, {
+    bodyClass: 'markdown-body',
+    extraHead: `${sourceHighlightStyle()}${sourceMermaidScript()}`,
+    extraBody: `${sourceHighlightScript()}${sourceOutlineScript()}`,
+    outlineItems,
+  });
+}
+
+function renderSvgSourceDocument(article, svg) {
+  return renderSourceViewer(article, `<div class="svg-viewer">${svg}</div>`, {
+    bodyClass: 'source-centered',
+  });
+}
+
+function renderMermaidSourceDocument(article, mermaidSource) {
+  return renderSourceViewer(article, `<div class="mermaid">${escapeHtml(extractMermaidSource(mermaidSource))}</div>`, {
+    bodyClass: 'source-centered',
+    extraHead: sourceMermaidScript(),
+  });
+}
+
+function renderTextSourceDocument(article, text) {
+  return renderSourceViewer(article, `<pre><code>${escapeHtml(text)}</code></pre>`, {
+    bodyClass: 'text-body',
+    extraHead: sourceHighlightStyle(),
+    extraBody: sourceHighlightScript(),
+  });
+}
+
+function renderSourceViewer(article, body, options = {}) {
+  const bodyClass = options.bodyClass || 'source-body';
+  const outlineHtml = renderOutline(options.outlineItems || []);
+  const layoutClass = outlineHtml ? 'source-layout has-outline' : 'source-layout';
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(article.title)}</title>
+  <link rel="icon" href="${escapeHtml(article.path)}favicon.svg" type="image/svg+xml" />
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #172033;
+      --muted: #5b6a7f;
+      --line: #d9e2ec;
+      --paper: #ffffff;
+      --wash: #f5f7fb;
+      --accent: #0f766e;
+      --accent-soft: #d9f7f2;
+      --accent-strong: #0b5f58;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--wash);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.72;
+      letter-spacing: 0;
+    }
+    .source-layout {
+      width: min(940px, calc(100vw - 32px));
+      margin: 36px auto;
+    }
+    .source-layout.has-outline {
+      width: min(1240px, calc(100vw - 32px));
+      display: grid;
+      grid-template-columns: minmax(0, 920px) 260px;
+      align-items: start;
+      gap: 24px;
+    }
+    main {
+      min-width: 0;
+      padding: clamp(22px, 4vw, 42px);
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 18px 45px rgba(23, 32, 51, 0.08);
+    }
+    h1, h2, h3 { line-height: 1.25; letter-spacing: 0; }
+    h1 { margin-top: 0; font-size: clamp(28px, 5vw, 42px); }
+    h2 { margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 24px; }
+    h3 { margin-top: 24px; font-size: 19px; }
+    h1[id], h2[id], h3[id], h4[id], h5[id], h6[id] { scroll-margin-top: 24px; }
+    a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+    code {
+      padding: 0.15em 0.35em;
+      border-radius: 5px;
+      background: var(--accent-soft);
+      color: #075e54;
+      font-size: 0.92em;
+    }
+    pre {
+      overflow-x: auto;
+      padding: 18px;
+      border-radius: 8px;
+      background: #111827;
+      color: #d1fae5;
+    }
+    pre code { padding: 0; background: transparent; color: inherit; }
+    blockquote {
+      margin: 22px 0;
+      padding: 12px 18px;
+      border-left: 4px solid var(--accent);
+      background: #f8fafc;
+      color: var(--muted);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      display: block;
+      overflow-x: auto;
+    }
+    th, td { padding: 10px 12px; border: 1px solid var(--line); text-align: left; }
+    th { background: #eef6f5; }
+    img, svg { max-width: 100%; height: auto; }
+    .source-centered {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+    .source-centered .source-layout { margin: 0 auto; }
+    .svg-viewer, .embedded-svg, .mermaid {
+      overflow: auto;
+      max-width: 100%;
+      padding: 14px;
+      border-radius: 8px;
+      background: #ffffff;
+      border: 1px solid var(--line);
+    }
+    .doc-outline {
+      position: sticky;
+      top: 24px;
+      max-height: calc(100vh - 48px);
+      padding: 14px 0;
+      overflow: hidden;
+    }
+    .outline-card {
+      max-height: calc(100vh - 76px);
+      overflow-y: auto;
+      padding: 18px 12px 18px 18px;
+      background: rgba(255, 255, 255, 0.78);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 14px 35px rgba(23, 32, 51, 0.07);
+      scrollbar-width: thin;
+      scrollbar-color: rgba(15, 118, 110, 0.34) transparent;
+    }
+    .outline-kicker {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .outline-list {
+      display: grid;
+      gap: 2px;
+    }
+    .outline-link {
+      display: block;
+      min-height: 28px;
+      padding: 5px 8px;
+      border-left: 3px solid transparent;
+      border-radius: 6px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+      text-decoration: none;
+      transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+    }
+    .outline-link:hover {
+      background: var(--accent-soft);
+      color: var(--accent-strong);
+    }
+    .outline-link.is-active {
+      background: #eef6f5;
+      border-left-color: var(--accent);
+      color: var(--ink);
+      font-weight: 700;
+    }
+    .outline-depth-1 { padding-left: 8px; }
+    .outline-depth-2 { padding-left: 18px; }
+    .outline-depth-3 { padding-left: 30px; }
+    .outline-depth-4 { padding-left: 42px; }
+    .outline-depth-5 { padding-left: 54px; }
+    .outline-depth-6 { padding-left: 66px; }
+    @media (max-width: 1120px) {
+      .source-layout.has-outline {
+        display: block;
+        width: min(940px, calc(100vw - 32px));
+      }
+      .doc-outline { display: none; }
+    }
+  </style>
+  ${options.extraHead || ''}
+</head>
+<body class="${escapeHtml(bodyClass)}">
+  <div class="${layoutClass}">
+    <main>
+      ${body}
+    </main>
+    ${outlineHtml}
+  </div>
+  ${options.extraBody || ''}
+</body>
+</html>`;
+}
+
+function renderOutline(items = []) {
+  const usableItems = items.filter((item) => item.id && item.text);
+  if (usableItems.length < 2) return '';
+
+  return `<aside class="doc-outline" aria-label="文档目录">
+    <div class="outline-card">
+      <div class="outline-kicker">Outline</div>
+      <nav class="outline-list">
+        ${usableItems.map((item) => `<a class="outline-link outline-depth-${item.depth}" href="#${escapeHtml(item.id)}" data-outline-link="${escapeHtml(item.id)}">${escapeHtml(item.text)}</a>`).join('')}
+      </nav>
+    </div>
+  </aside>`;
+}
+
+function sourceHighlightStyle() {
+  return '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css">';
+}
+
+function sourceHighlightScript() {
+  return `<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('pre code').forEach((block) => hljs.highlightElement(block));
+    });
+  </script>`;
+}
+
+function sourceOutlineScript() {
+  return `<script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const headings = Array.from(document.querySelectorAll('[data-outline-heading]'));
+      const links = Array.from(document.querySelectorAll('[data-outline-link]'));
+      if (!headings.length || !links.length) return;
+
+      const linkById = new Map(links.map((link) => [link.dataset.outlineLink, link]));
+      let activeId = '';
+      let ticking = false;
+
+      const setActive = (id) => {
+        if (!id || id === activeId) return;
+        activeId = id;
+
+        for (const link of links) {
+          link.classList.toggle('is-active', link.dataset.outlineLink === id);
+        }
+
+        const activeLink = linkById.get(id);
+        if (activeLink) {
+          activeLink.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+        }
+      };
+
+      const updateActive = () => {
+        ticking = false;
+        let next = headings[0].id;
+
+        for (const heading of headings) {
+          const rect = heading.getBoundingClientRect();
+          if (rect.top <= 132) next = heading.id;
+          else break;
+        }
+
+        setActive(next);
+      };
+
+      const scheduleUpdate = () => {
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(updateActive);
+      };
+
+      for (const link of links) {
+        link.addEventListener('click', (event) => {
+          const id = link.dataset.outlineLink;
+          const target = id ? document.getElementById(id) : null;
+          if (!target) return;
+          event.preventDefault();
+          target.scrollIntoView({ block: 'start', behavior: 'smooth' });
+          window.history.replaceState(null, '', '#' + encodeURIComponent(id));
+          setActive(id);
+        });
+      }
+
+      window.addEventListener('scroll', scheduleUpdate, { passive: true });
+      window.addEventListener('resize', scheduleUpdate);
+      updateActive();
+    });
+  </script>`;
+}
+
+function sourceMermaidScript() {
+  return `<script src="https://cdn.jsdelivr.net/npm/mermaid@11.6.0/dist/mermaid.min.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      if (!window.mermaid) return;
+      window.mermaid.initialize({
+        startOnLoad: true,
+        securityLevel: 'loose',
+        theme: window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default',
+      });
+      window.mermaid.run({ nodes: document.querySelectorAll('.mermaid') }).catch((error) => {
+        console.error('Mermaid render failed', error);
+      });
+    });
+  </script>`;
+}
+
+function isMermaidSource(value = '') {
+  return /^(graph|flowchart)\s+(TB|TD|BT|RL|LR)\b/m.test(String(value).trim()) ||
+    /^(sequenceDiagram|classDiagram|stateDiagram|stateDiagram-v2|erDiagram|gantt|pie|journey|gitGraph|mindmap|timeline|C4Context)\b/m.test(String(value).trim());
+}
+
+function extractMermaidSource(value = '') {
+  const trimmed = String(value).trim();
+  const fenced = trimmed.match(/```mermaid\n([\s\S]+?)\n```/);
+  return fenced?.[1]?.trim() || trimmed;
+}
+
+function stripLeadingFrontmatter(value = '') {
+  return String(value).replace(/^---\s*\n[\s\S]*?\n---\s*(?:\n|$)/, '');
+}
+
+function stripTags(value = '') {
+  return String(value)
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function cleanHeadingText(value = '') {
+  return String(value).replace(/\s+/g, ' ').trim() || 'Untitled';
+}
+
+function uniqueHeadingId(text, counts) {
+  const base = slugifyHeading(text) || `section-${shortTextHash(text)}`;
+  const count = counts.get(base) || 0;
+  counts.set(base, count + 1);
+  return count ? `${base}-${count + 1}` : base;
+}
+
+function slugifyHeading(value = '') {
+  return String(value)
+    .normalize('NFKD')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s_-]/gu, '')
+    .trim()
+    .replace(/[\s_]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+function shortTextHash(value = '') {
+  let hash = 2166136261;
+  for (const char of String(value)) {
+    hash ^= char.codePointAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
 }
 
 function getContentBucket(env) {
@@ -432,6 +882,8 @@ function getContentBucket(env) {
 function contentTypeForKey(key) {
   const extension = pathExtension(key).toLowerCase();
   if (extension === 'html') return 'text/html; charset=utf-8';
+  if (extension === 'md' || extension === 'markdown') return 'text/markdown; charset=utf-8';
+  if (extension === 'txt' || extension === 'mmd' || extension === 'mermaid') return 'text/plain; charset=utf-8';
   if (extension === 'css') return 'text/css; charset=utf-8';
   if (extension === 'js') return 'text/javascript; charset=utf-8';
   if (extension === 'json') return 'application/json; charset=utf-8';
@@ -884,6 +1336,38 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
       a {
         color: inherit;
       }
+      .header-actions {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .tree-toolbar {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+      .tree-action {
+        min-height: 28px;
+        padding: 0 10px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--muted);
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .tree-action:hover {
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
       .logout {
         display: inline-flex;
         align-items: center;
@@ -961,6 +1445,88 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
         font-weight: 800;
         letter-spacing: 0;
         text-transform: uppercase;
+      }
+      .collapse-heading {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .collapse-toggle {
+        min-width: 0;
+        max-width: 100%;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 8px 4px 4px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        font-weight: inherit;
+        letter-spacing: inherit;
+        text-transform: inherit;
+        cursor: pointer;
+      }
+      .collapse-toggle:hover {
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+      .chevron {
+        position: relative;
+        width: 16px;
+        height: 16px;
+        flex: 0 0 16px;
+        color: currentColor;
+        transition: transform 180ms ease;
+      }
+      .chevron::before {
+        content: "";
+        position: absolute;
+        top: 3px;
+        left: 5px;
+        width: 0;
+        height: 0;
+        border-top: 5px solid transparent;
+        border-bottom: 5px solid transparent;
+        border-left: 6px solid currentColor;
+      }
+      .collapse-toggle[aria-expanded="true"] .chevron {
+        transform: rotate(90deg);
+      }
+      .title-text {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .count-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 24px;
+        height: 22px;
+        padding: 0 8px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: none;
+      }
+      .collapse-panel {
+        display: grid;
+        grid-template-rows: 1fr;
+        opacity: 1;
+        transition: grid-template-rows 180ms ease, opacity 160ms ease;
+      }
+      .collapse-panel-inner {
+        min-height: 0;
+        overflow: hidden;
+      }
+      [data-collapse-group].is-collapsed > .collapse-panel {
+        grid-template-rows: 0fr;
+        opacity: 0;
       }
       .article-list {
         display: grid;
@@ -1144,6 +1710,17 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
         .row {
           display: block;
         }
+        .header-actions {
+          justify-content: flex-start;
+          margin-top: 14px;
+        }
+        .tree-toolbar {
+          width: 100%;
+          justify-content: space-between;
+        }
+        .tree-action {
+          flex: 1;
+        }
         .meta {
           margin-bottom: 16px;
         }
@@ -1164,7 +1741,10 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
           <h1>Share Pages</h1>
           <p>团队 HTML 文档入口。这里按项目和分类组织文档，每篇文章可单独配置访问密码和加密状态。</p>
         </div>
-        <a class="logout" href="/logout">退出</a>
+        <div class="header-actions">
+          ${projects.length ? renderTreeToolbar() : ''}
+          <a class="logout" href="/logout">退出</a>
+        </div>
       </header>
       ${projects.length ? projects.map(renderProjectSection).join('') : renderEmptyState()}
     </main>
@@ -1180,6 +1760,65 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
         window.setTimeout(() => toast.remove(), 3300);
       };
       initialToasts.forEach((toast) => showToast(toast.message, toast.type));
+
+      const collapseStorageKey = 'share-pages-admin-collapse-v1';
+      const collapseGroups = Array.from(document.querySelectorAll('[data-collapse-group]'));
+      const readCollapseState = () => {
+        try {
+          const parsed = JSON.parse(window.localStorage.getItem(collapseStorageKey) || '{}');
+          return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch {
+          return {};
+        }
+      };
+      const writeCollapseState = () => {
+        const state = {};
+        collapseGroups.forEach((group) => {
+          if (group.classList.contains('is-collapsed')) {
+            state[group.dataset.collapseKey] = true;
+          }
+        });
+        try {
+          window.localStorage.setItem(collapseStorageKey, JSON.stringify(state));
+        } catch {
+          // Collapse still works even if the browser blocks localStorage.
+        }
+      };
+      const directChild = (element, selector) => (
+        Array.from(element.children).find((child) => child.matches(selector))
+      );
+      const setGroupCollapsed = (group, collapsed, persist = true) => {
+        const heading = directChild(group, '.collapse-heading');
+        const button = heading ? heading.querySelector('[data-collapse-toggle]') : null;
+        const panel = directChild(group, '[data-collapse-panel]');
+        if (!button || !panel) return;
+
+        group.classList.toggle('is-collapsed', collapsed);
+        button.setAttribute('aria-expanded', String(!collapsed));
+        button.setAttribute('title', collapsed ? '展开' : '收起');
+        panel.setAttribute('aria-hidden', String(collapsed));
+        panel.inert = collapsed;
+
+        if (persist) writeCollapseState();
+      };
+      const collapseState = readCollapseState();
+      collapseGroups.forEach((group) => {
+        setGroupCollapsed(group, Boolean(collapseState[group.dataset.collapseKey]), false);
+        const heading = directChild(group, '.collapse-heading');
+        const button = heading ? heading.querySelector('[data-collapse-toggle]') : null;
+        if (!button) return;
+
+        button.addEventListener('click', () => {
+          setGroupCollapsed(group, !group.classList.contains('is-collapsed'));
+        });
+      });
+      document.querySelectorAll('[data-collapse-all]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const collapsed = button.dataset.collapseAll === 'true';
+          collapseGroups.forEach((group) => setGroupCollapsed(group, collapsed, false));
+          writeCollapseState();
+        });
+      });
 
       const statusText = (encrypted) => encrypted ? '已加密' : '公开';
       const hintText = (updatedAt) => updatedAt ? \`上次更新：\${updatedAt}\` : '尚未单独保存设置';
@@ -1295,19 +1934,65 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
 }
 
 function renderProjectSection(project) {
-  return `<section class="project" aria-labelledby="project-${shortHash(project.name)}">
-    <h2 id="project-${shortHash(project.name)}" class="project-title">${escapeHtml(project.name)}</h2>
-    ${project.categories.map(renderCategorySection).join('')}
+  const key = `project:${project.name}`;
+  const hash = shortHash(key);
+  const panelId = `project-panel-${hash}`;
+  const articleCount = project.categories.reduce((total, category) => total + category.articles.length, 0);
+
+  return `<section class="project" data-collapse-group data-collapse-level="1" data-collapse-key="${escapeHtml(key)}" aria-labelledby="project-${hash}">
+    <h2 id="project-${hash}" class="project-title collapse-heading">
+      ${renderCollapseButton({
+        label: project.name,
+        count: articleCount,
+        panelId,
+        levelLabel: '项目',
+      })}
+    </h2>
+    <div id="${panelId}" class="collapse-panel" data-collapse-panel>
+      <div class="collapse-panel-inner">
+        ${project.categories.map((category) => renderCategorySection(category, project.name)).join('')}
+      </div>
+    </div>
   </section>`;
 }
 
-function renderCategorySection(category) {
-  return `<section class="category" aria-label="${escapeHtml(category.name)}">
-    <h3 class="category-title">${escapeHtml(category.name)}</h3>
-    <div class="article-list">
-      ${category.articles.map(renderArticleManagerRow).join('')}
+function renderCategorySection(category, projectName) {
+  const key = `category:${projectName}:${category.name}`;
+  const hash = shortHash(key);
+  const panelId = `category-panel-${hash}`;
+
+  return `<section class="category" data-collapse-group data-collapse-level="2" data-collapse-key="${escapeHtml(key)}" aria-labelledby="category-${hash}">
+    <h3 id="category-${hash}" class="category-title collapse-heading">
+      ${renderCollapseButton({
+        label: category.name,
+        count: category.articles.length,
+        panelId,
+        levelLabel: '分类',
+      })}
+    </h3>
+    <div id="${panelId}" class="collapse-panel" data-collapse-panel>
+      <div class="collapse-panel-inner">
+        <div class="article-list">
+          ${category.articles.map(renderArticleManagerRow).join('')}
+        </div>
+      </div>
     </div>
   </section>`;
+}
+
+function renderTreeToolbar() {
+  return `<div class="tree-toolbar" aria-label="目录展开控制">
+    <button class="tree-action" type="button" data-collapse-all="true">一键折叠全部</button>
+    <button class="tree-action" type="button" data-collapse-all="false">一键展开全部</button>
+  </div>`;
+}
+
+function renderCollapseButton({ label, count, panelId, levelLabel }) {
+  return `<button class="collapse-toggle" type="button" data-collapse-toggle aria-expanded="true" aria-controls="${escapeHtml(panelId)}" title="收起">
+    <span class="chevron" aria-hidden="true"></span>
+    <span class="title-text">${escapeHtml(label)}</span>
+    <span class="count-badge" aria-label="${escapeHtml(levelLabel)}下共有 ${count} 篇文章">${count}</span>
+  </button>`;
 }
 
 function renderEmptyState() {

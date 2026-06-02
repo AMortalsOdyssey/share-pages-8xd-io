@@ -7,9 +7,13 @@
     "check": "wrangler deploy --dry-run --config wrangler.jsonc",
     "deploy": "wrangler deploy --config wrangler.jsonc",
     "dev": "wrangler dev --config wrangler.jsonc",
-    "import:html": "node scripts/import-html.mjs"
+    "import:html": "node scripts/import-html.mjs",
+    "import:document": "node scripts/import-document.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.96.0"
+  },
+  "dependencies": {
+    "marked": "^15.0.12"
   }
 }

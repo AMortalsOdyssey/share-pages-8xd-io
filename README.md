@@ -1,6 +1,6 @@
 # Share Pages Worker
 
-A generic Cloudflare Worker framework for publishing private or public HTML documents from your own Cloudflare account.
+A generic Cloudflare Worker framework for publishing private or public HTML, Markdown, SVG, Mermaid, and text documents from your own Cloudflare account.
 
 The repository contains only reusable application code. Document metadata belongs in Cloudflare KV, and document bodies/assets belong in Cloudflare R2.
 
@@ -9,7 +9,8 @@ The repository contains only reusable application code. Document metadata belong
 - Admin login for the root document index.
 - Cloudflare Turnstile verification.
 - Per-article password settings.
-- R2-backed HTML and favicon storage.
+- R2-backed source document and favicon storage.
+- Runtime previews for HTML, Markdown, SVG, Mermaid, and plain text.
 - KV-backed catalog and article settings.
 - Worker-first routing so protected documents cannot bypass article auth.
 - Optional QuickShare submodule for the broader HTML/Markdown/SVG/Mermaid sharing workflow.
@@ -18,7 +19,8 @@ The repository contains only reusable application code. Document metadata belong
 
 - `src/index.js` - Worker application and admin UI.
 - `public/` - generic static fallback assets.
-- `scripts/import-html.mjs` - imports local HTML into R2 and updates the KV catalog.
+- `scripts/import-document.mjs` - imports local HTML, Markdown, SVG, Mermaid, or text into R2 and updates the KV catalog.
+- `scripts/import-html.mjs` - legacy HTML-only import helper.
 - `wrangler.example.jsonc` - template for a local `wrangler.jsonc`.
 - `vendor/quickshare-cloudflare` - optional QuickShare submodule.
 
@@ -37,7 +39,8 @@ KV key `share_pages:catalog` stores:
       "category": "General",
       "title": "Example",
       "path": "/documents/general/example-1234abcd/",
-      "r2Key": "pages/example-1234abcd/index.html",
+      "r2Key": "pages/example-1234abcd/index.md",
+      "sourceType": "markdown",
       "faviconKey": "pages/example-1234abcd/favicon.svg",
       "r2Prefix": "pages/example-1234abcd/",
       "encrypted": false,
@@ -52,7 +55,7 @@ Article settings are stored separately as `article:<path>` in the same KV namesp
 
 R2 stores:
 
-- `pages/<id>/index.html`
+- `pages/<id>/index.html` or `index.md` / `index.svg` / `index.mmd` / `index.txt`
 - `pages/<id>/favicon.svg`
 
 ## Local Setup
@@ -85,7 +88,43 @@ npx wrangler secret put COOKIE_SIGNING_SECRET
 npx wrangler secret put PASSWORD_CRYPTO_SECRET
 ```
 
-## Import HTML
+## Import Documents
+
+```bash
+npm run import:document -- \
+  --file ./note.md \
+  --project Documents \
+  --category General \
+  --slug example-note
+```
+
+The document importer stores the original source in R2. Markdown, SVG, Mermaid, and text are rendered by the Worker at request time.
+
+By default the importer uses `--transport auto`:
+
+- If `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` are available, it writes R2 and KV through the Cloudflare API in one Node process.
+- Otherwise it falls back to Wrangler CLI, which is slower but works with `npx wrangler login`.
+
+Recommended local-only fast import variables:
+
+```bash
+export CLOUDFLARE_ACCOUNT_ID=<your-account-id>
+export CLOUDFLARE_API_TOKEN=<token-with-r2-and-kv-write-access>
+```
+
+Keep these values in your shell profile, password manager, or local `.env` workflow. Do not commit them.
+
+Useful options:
+
+- `--type <html|markdown|svg|mermaid|text>` overrides automatic type detection.
+- `--transport <auto|api|wrangler>` chooses the upload backend.
+- `--title <title>` sets the visible article title.
+- `--path <path>` sets the public path directly.
+- `--id <id>` sets the stable unique article id.
+- `--favicon <path>` uploads an existing SVG favicon.
+- `--encrypted` marks the catalog entry encrypted by default.
+
+## Import HTML Legacy
 
 ```bash
 npm run import:html -- \
@@ -103,7 +142,7 @@ Useful options:
 - `--favicon <path>` uploads an existing SVG favicon.
 - `--encrypted` marks the catalog entry encrypted by default.
 
-The script uploads the HTML and favicon to R2, then updates `share_pages:catalog` in KV.
+Both import scripts upload content and favicon to R2, then update `share_pages:catalog` in KV.
 
 ## QuickShare Submodule
 
