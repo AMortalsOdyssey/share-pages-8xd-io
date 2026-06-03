@@ -1340,44 +1340,71 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
         display: flex;
         align-items: center;
         justify-content: flex-end;
-        gap: 10px;
+        gap: 8px;
         flex-wrap: wrap;
       }
       .tree-toolbar {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
-        padding: 4px;
+        gap: 2px;
+        padding: 3px;
         border: 1px solid var(--line);
-        border-radius: 8px;
+        border-radius: 999px;
         background: var(--panel);
       }
-      .tree-action {
-        min-height: 28px;
-        padding: 0 10px;
+      .tree-toggle,
+      .logout {
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        padding: 0;
         border: 0;
-        border-radius: 6px;
+        border-radius: 999px;
         background: transparent;
         color: var(--muted);
-        font: inherit;
-        font-size: 13px;
         cursor: pointer;
-        white-space: nowrap;
+        transition: background 160ms ease, color 160ms ease, transform 160ms ease;
       }
-      .tree-action:hover {
+      .tree-toggle:hover,
+      .logout:hover {
         background: var(--accent-soft);
         color: var(--accent);
+        transform: translateY(-1px);
+      }
+      .tree-toggle svg,
+      .logout svg {
+        width: 18px;
+        height: 18px;
+        overflow: visible;
+      }
+      .tree-toggle .icon-state {
+        transform-origin: center;
+        transition: opacity 160ms ease, transform 180ms ease;
+      }
+      .tree-toggle[data-global-state="expanded"] .state-collapsed,
+      .tree-toggle[data-global-state="collapsed"] .state-expanded {
+        opacity: 0;
+        transform: scale(0.72);
+      }
+      .tree-toggle .triangle {
+        transition: transform 180ms ease;
+      }
+      .tree-toggle[data-global-state="expanded"]:hover .state-expanded .top-triangle {
+        transform: translateY(1.5px);
+      }
+      .tree-toggle[data-global-state="expanded"]:hover .state-expanded .bottom-triangle {
+        transform: translateY(-1.5px);
+      }
+      .tree-toggle[data-global-state="collapsed"]:hover .state-collapsed .top-triangle {
+        transform: translateY(-1.5px);
+      }
+      .tree-toggle[data-global-state="collapsed"]:hover .state-collapsed .bottom-triangle {
+        transform: translateY(1.5px);
       }
       .logout {
-        display: inline-flex;
-        align-items: center;
-        min-height: 36px;
-        padding: 0 12px;
-        border: 1px solid var(--line);
-        border-radius: 6px;
-        color: var(--muted);
         text-decoration: none;
-        white-space: nowrap;
       }
       .toast-viewport {
         position: fixed;
@@ -1546,8 +1573,9 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
       }
       .row {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(264px, 330px);
-        gap: 14px;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: end;
+        gap: 12px;
         padding: 14px 16px;
         border: 1px solid var(--line);
         border-radius: 8px;
@@ -1599,33 +1627,33 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
       .security-controls {
         display: grid;
         grid-template-rows: auto auto;
-        align-self: center;
-        gap: 8px;
-        width: 100%;
-        padding: 9px 10px;
+        justify-self: end;
+        gap: 5px;
+        width: 178px;
+        padding: 6px 7px;
         border: 1px solid var(--line);
-        border-radius: 7px;
+        border-radius: 6px;
         background: #fbfcfe;
       }
       .security-top,
       .security-bottom {
         display: grid;
         align-items: center;
-        gap: 8px;
+        gap: 5px;
       }
       .security-top {
         grid-template-columns: auto minmax(0, 1fr);
       }
       .security-bottom {
-        grid-template-columns: minmax(0, 1fr) 56px;
+        grid-template-columns: minmax(0, 1fr) 24px;
       }
       .switch-control {
         display: inline-flex;
         align-items: center;
-        gap: 7px;
-        min-height: 26px;
+        gap: 4px;
+        min-height: 18px;
         color: var(--muted);
-        font-size: 12px;
+        font-size: 10px;
         font-weight: 650;
         cursor: pointer;
       }
@@ -1636,17 +1664,17 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
         position: relative;
         display: inline-flex;
         align-items: center;
-        width: 39px;
-        height: 22px;
-        flex: 0 0 39px;
+        width: 25px;
+        height: 14px;
+        flex: 0 0 25px;
       }
       .switch input {
         position: absolute;
         opacity: 0;
       }
       .slider {
-        width: 39px;
-        height: 22px;
+        width: 25px;
+        height: 14px;
         border: 1px solid var(--line);
         border-radius: 999px;
         background: transparent;
@@ -1656,10 +1684,10 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
       .slider::before {
         content: "";
         position: absolute;
-        top: 4px;
-        left: 4px;
-        width: 14px;
-        height: 14px;
+        top: 3px;
+        left: 3px;
+        width: 8px;
+        height: 8px;
         border-radius: 50%;
         background: var(--muted);
         transition: transform 160ms ease, background 160ms ease;
@@ -1669,7 +1697,7 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
         background: var(--accent);
       }
       .switch input:checked + .slider::before {
-        transform: translateX(17px);
+        transform: translateX(11px);
         background: #fff;
       }
       .password-wrap {
@@ -1677,38 +1705,38 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
       }
       .password-wrap label {
         position: absolute;
-        left: 9px;
-        top: -6px;
+        left: 7px;
+        top: -5px;
         z-index: 1;
-        padding: 0 4px;
+        padding: 0 3px;
         background: #fbfcfe;
         color: var(--muted);
-        font-size: 11px;
+        font-size: 9px;
         font-weight: 650;
         line-height: 1;
       }
       input[type="password"],
       input[type="text"] {
         width: 100%;
-        height: 32px;
-        padding: 0 34px 0 10px;
+        height: 22px;
+        padding: 0 22px 0 7px;
         border: 1px solid var(--line);
-        border-radius: 5px;
+        border-radius: 4px;
         background: transparent;
         color: var(--text);
         font: inherit;
-        font-size: 13px;
+        font-size: 10px;
       }
       .icon-button {
         position: absolute;
-        right: 3px;
-        bottom: 3px;
-        width: 26px;
-        height: 26px;
+        right: 2px;
+        bottom: 2px;
+        width: 18px;
+        height: 18px;
         display: grid;
         place-items: center;
         border: 0;
-        border-radius: 5px;
+        border-radius: 4px;
         background: transparent;
         color: var(--muted);
         cursor: pointer;
@@ -1718,17 +1746,54 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
         background: var(--accent-soft);
       }
       .save {
-        height: 32px;
-        padding: 0 10px;
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: 24px;
+        height: 22px;
+        padding: 0;
         border: 0;
-        border-radius: 5px;
+        border-radius: 4px;
         background: var(--accent);
         color: #fff;
         font: inherit;
-        font-size: 13px;
-        font-weight: 700;
         cursor: pointer;
+        transition: background 160ms ease, transform 160ms ease;
+      }
+      .save:hover {
+        background: #0f766e;
+      }
+      .save:hover::after,
+      .save:focus-visible::after {
+        content: attr(aria-label);
+        position: absolute;
+        right: 0;
+        bottom: calc(100% + 5px);
+        padding: 3px 6px;
+        border-radius: 4px;
+        background: var(--text);
+        color: #fff;
+        font-size: 11px;
+        line-height: 1;
         white-space: nowrap;
+        box-shadow: 0 8px 18px rgba(15, 23, 42, 0.16);
+      }
+      .save-icon {
+        width: 13px;
+        height: 13px;
+      }
+      .row.is-saving .save-icon {
+        animation: save-pulse 700ms ease-in-out infinite;
+      }
+      @keyframes save-pulse {
+        0%, 100% {
+          transform: scale(1);
+          opacity: 1;
+        }
+        50% {
+          transform: scale(0.82);
+          opacity: 0.62;
+        }
       }
       .hint {
         min-width: 0;
@@ -1737,16 +1802,19 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
         text-overflow: ellipsis;
         white-space: nowrap;
         color: var(--muted);
-        font-size: 11px;
-        line-height: 1.3;
+        font-size: 9px;
+        line-height: 1.1;
       }
       @media (max-width: 820px) {
         main {
           width: min(100vw - 24px, 720px);
           margin-top: 26px;
         }
-        header,
         .row {
+          grid-template-columns: minmax(0, 1fr) auto;
+          align-items: end;
+        }
+        header {
           display: block;
         }
         .header-actions {
@@ -1754,24 +1822,23 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
           margin-top: 14px;
         }
         .tree-toolbar {
-          width: 100%;
-          justify-content: space-between;
-        }
-        .tree-action {
-          flex: 1;
+          width: auto;
         }
         .meta {
-          margin-bottom: 12px;
+          grid-column: 1 / -1;
+          margin-bottom: 0;
         }
         .security-controls {
-          max-width: none;
-          padding: 10px;
+          grid-column: 2;
+          width: 168px;
+          margin-top: -3px;
+          padding: 6px 7px;
         }
         .security-bottom {
-          grid-template-columns: minmax(0, 1fr) 56px;
+          grid-template-columns: minmax(0, 1fr) 24px;
         }
         .save {
-          width: 56px;
+          width: 24px;
         }
       }
     </style>
@@ -1785,8 +1852,7 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
           <p>团队 HTML 文档入口。这里按项目和分类组织文档，每篇文章可单独配置访问密码和加密状态。</p>
         </div>
         <div class="header-actions">
-          ${projects.length ? renderTreeToolbar() : ''}
-          <a class="logout" href="/logout">退出</a>
+          ${renderHeaderControls(Boolean(projects.length))}
         </div>
       </header>
       ${projects.length ? projects.map(renderProjectSection).join('') : renderEmptyState()}
@@ -1845,6 +1911,17 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
         if (persist) writeCollapseState();
       };
       const collapseState = readCollapseState();
+      const globalCollapseToggle = document.querySelector('[data-collapse-toggle-all]');
+      const updateGlobalCollapseToggle = () => {
+        if (!globalCollapseToggle) return;
+        const allCollapsed = collapseGroups.length > 0 && collapseGroups.every((group) => (
+          group.classList.contains('is-collapsed')
+        ));
+        const label = allCollapsed ? '一键展开全部' : '一键收起全部';
+        globalCollapseToggle.dataset.globalState = allCollapsed ? 'collapsed' : 'expanded';
+        globalCollapseToggle.setAttribute('aria-label', label);
+        globalCollapseToggle.setAttribute('title', label);
+      };
       collapseGroups.forEach((group) => {
         setGroupCollapsed(group, Boolean(collapseState[group.dataset.collapseKey]), false);
         const heading = directChild(group, '.collapse-heading');
@@ -1853,18 +1930,40 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
 
         button.addEventListener('click', () => {
           setGroupCollapsed(group, !group.classList.contains('is-collapsed'));
+          updateGlobalCollapseToggle();
         });
       });
-      document.querySelectorAll('[data-collapse-all]').forEach((button) => {
-        button.addEventListener('click', () => {
-          const collapsed = button.dataset.collapseAll === 'true';
-          collapseGroups.forEach((group) => setGroupCollapsed(group, collapsed, false));
+      if (globalCollapseToggle) {
+        globalCollapseToggle.addEventListener('click', () => {
+          const shouldCollapse = globalCollapseToggle.dataset.globalState !== 'collapsed';
+          collapseGroups.forEach((group) => setGroupCollapsed(group, shouldCollapse, false));
           writeCollapseState();
+          updateGlobalCollapseToggle();
         });
-      });
+        updateGlobalCollapseToggle();
+      }
 
       const statusText = (encrypted) => encrypted ? '已加密' : '公开';
-      const hintText = (updatedAt) => updatedAt ? \`上次更新：\${updatedAt}\` : '尚未单独保存设置';
+      const formatBeijingDateTime = (value) => {
+        if (!value) return '';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return String(value).replace(/^上次更新：/, '');
+        const parts = new Intl.DateTimeFormat('zh-CN', {
+          timeZone: 'Asia/Shanghai',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false,
+        }).formatToParts(date).reduce((acc, part) => {
+          if (part.type !== 'literal') acc[part.type] = part.value;
+          return acc;
+        }, {});
+        return \`\${parts.year}-\${parts.month}-\${parts.day} \${parts.hour}:\${parts.minute}:\${parts.second}\`;
+      };
+      const hintText = (updatedAt) => formatBeijingDateTime(updatedAt) || '未保存';
       const setFormSaving = (form, saving) => {
         form.closest('.row').classList.toggle('is-saving', saving);
         form.querySelectorAll('button, input').forEach((control) => {
@@ -2023,10 +2122,26 @@ function renderCategorySection(category, projectName) {
   </section>`;
 }
 
-function renderTreeToolbar() {
+function renderHeaderControls(hasProjects) {
   return `<div class="tree-toolbar" aria-label="目录展开控制">
-    <button class="tree-action" type="button" data-collapse-all="true">一键折叠全部</button>
-    <button class="tree-action" type="button" data-collapse-all="false">一键展开全部</button>
+    ${hasProjects ? `<button class="tree-toggle" type="button" data-collapse-toggle-all data-global-state="expanded" aria-label="一键收起全部" title="一键收起全部">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <g class="icon-state state-expanded">
+          <path class="triangle top-triangle" d="M7.5 7.5 12 10.7 16.5 7.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path class="triangle bottom-triangle" d="M7.5 16.5 12 13.3 16.5 16.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </g>
+        <g class="icon-state state-collapsed">
+          <path class="triangle top-triangle" d="M7.5 10 12 6.8 16.5 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path class="triangle bottom-triangle" d="M7.5 14 12 17.2 16.5 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </g>
+      </svg>
+    </button>` : ''}
+    <a class="logout" href="/logout" aria-label="退出" title="退出">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M9 5H6.8A1.8 1.8 0 0 0 5 6.8v10.4A1.8 1.8 0 0 0 6.8 19H9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        <path d="M13 8l4 4-4 4M17 12H9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </a>
   </div>`;
 }
 
@@ -2049,7 +2164,7 @@ function renderArticleManagerRow(article) {
   const checked = article.encrypted ? ' checked' : '';
   const status = article.encrypted ? '已加密' : '公开';
   const password = article.password;
-  const updatedAt = article.updatedAt ? `上次更新：${escapeHtml(article.updatedAt)}` : '尚未单独保存设置';
+  const updatedAt = formatBeijingDateTime(article.updatedAt) || '未保存';
 
   return `<article class="row">
     <div class="meta">
@@ -2074,19 +2189,44 @@ function renderArticleManagerRow(article) {
       </div>
       <div class="security-bottom">
         <div class="password-wrap">
-          <label for="password-${shortHash(article.path)}">独立密码</label>
+          <label for="password-${shortHash(article.path)}">设置密码</label>
           <input id="password-${shortHash(article.path)}" name="password" type="password" value="${escapeHtml(password)}" autocomplete="off" />
           <button class="icon-button" type="button" data-toggle-password aria-label="查看密码" title="查看密码" aria-pressed="false">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
               <circle cx="12" cy="12" r="2.6" stroke="currentColor" stroke-width="1.8"/>
             </svg>
           </button>
         </div>
-        <button class="save" type="submit">保存</button>
+        <button class="save" type="submit" aria-label="保存" title="保存">
+          <svg class="save-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M5 4h11l3 3v13H5V4Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+            <path d="M8 4v6h8V4M8 20v-6h8v6" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+          </svg>
+        </button>
       </div>
     </form>
   </article>`;
+}
+
+function formatBeijingDateTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).replace(/^上次更新：/, '');
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(date).reduce((acc, part) => {
+    if (part.type !== 'literal') acc[part.type] = part.value;
+    return acc;
+  }, {});
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
 }
 
 function renderLoginPage({ mode, path = '/', title = 'Share Pages Admin', error = '', turnstileSiteKey = '' }) {
