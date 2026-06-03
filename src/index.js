@@ -1546,9 +1546,9 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
       }
       .row {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(300px, 370px);
-        gap: 16px;
-        padding: 16px 18px;
+        grid-template-columns: minmax(0, 1fr) minmax(264px, 330px);
+        gap: 14px;
+        padding: 14px 16px;
         border: 1px solid var(--line);
         border-radius: 8px;
         background: var(--panel);
@@ -1596,36 +1596,57 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
         font-weight: 700;
         white-space: nowrap;
       }
-      form {
+      .security-controls {
         display: grid;
-        grid-template-columns: 52px minmax(0, 1fr) 64px;
-        align-items: end;
-        gap: 10px;
+        grid-template-rows: auto auto;
+        align-self: center;
+        gap: 8px;
         width: 100%;
+        padding: 9px 10px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: #fbfcfe;
       }
-      label {
-        display: block;
-        margin-bottom: 7px;
+      .security-top,
+      .security-bottom {
+        display: grid;
+        align-items: center;
+        gap: 8px;
+      }
+      .security-top {
+        grid-template-columns: auto minmax(0, 1fr);
+      }
+      .security-bottom {
+        grid-template-columns: minmax(0, 1fr) 56px;
+      }
+      .switch-control {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 26px;
         color: var(--muted);
-        font-size: 13px;
+        font-size: 12px;
+        font-weight: 650;
+        cursor: pointer;
       }
       .switch-label {
-        margin-bottom: 7px;
+        line-height: 1;
       }
       .switch {
         position: relative;
         display: inline-flex;
         align-items: center;
-        width: 48px;
-        height: 28px;
+        width: 39px;
+        height: 22px;
+        flex: 0 0 39px;
       }
       .switch input {
         position: absolute;
         opacity: 0;
       }
       .slider {
-        width: 48px;
-        height: 28px;
+        width: 39px;
+        height: 22px;
         border: 1px solid var(--line);
         border-radius: 999px;
         background: transparent;
@@ -1637,8 +1658,8 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
         position: absolute;
         top: 4px;
         left: 4px;
-        width: 20px;
-        height: 20px;
+        width: 14px;
+        height: 14px;
         border-radius: 50%;
         background: var(--muted);
         transition: transform 160ms ease, background 160ms ease;
@@ -1648,29 +1669,42 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
         background: var(--accent);
       }
       .switch input:checked + .slider::before {
-        transform: translateX(20px);
+        transform: translateX(17px);
         background: #fff;
       }
       .password-wrap {
         position: relative;
       }
+      .password-wrap label {
+        position: absolute;
+        left: 9px;
+        top: -6px;
+        z-index: 1;
+        padding: 0 4px;
+        background: #fbfcfe;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 650;
+        line-height: 1;
+      }
       input[type="password"],
       input[type="text"] {
         width: 100%;
-        height: 38px;
-        padding: 0 42px 0 11px;
+        height: 32px;
+        padding: 0 34px 0 10px;
         border: 1px solid var(--line);
-        border-radius: 6px;
+        border-radius: 5px;
         background: transparent;
         color: var(--text);
         font: inherit;
+        font-size: 13px;
       }
       .icon-button {
         position: absolute;
-        right: 4px;
-        bottom: 4px;
-        width: 30px;
-        height: 30px;
+        right: 3px;
+        bottom: 3px;
+        width: 26px;
+        height: 26px;
         display: grid;
         place-items: center;
         border: 0;
@@ -1684,22 +1718,27 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
         background: var(--accent-soft);
       }
       .save {
-        height: 38px;
-        padding: 0 14px;
+        height: 32px;
+        padding: 0 10px;
         border: 0;
-        border-radius: 6px;
+        border-radius: 5px;
         background: var(--accent);
         color: #fff;
         font: inherit;
+        font-size: 13px;
         font-weight: 700;
         cursor: pointer;
         white-space: nowrap;
       }
       .hint {
-        grid-column: 1 / -1;
+        min-width: 0;
+        overflow: hidden;
+        text-align: right;
+        text-overflow: ellipsis;
+        white-space: nowrap;
         color: var(--muted);
-        font-size: 12px;
-        line-height: 1.5;
+        font-size: 11px;
+        line-height: 1.3;
       }
       @media (max-width: 820px) {
         main {
@@ -1722,13 +1761,17 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
           flex: 1;
         }
         .meta {
-          margin-bottom: 16px;
+          margin-bottom: 12px;
         }
-        form {
-          grid-template-columns: 1fr;
+        .security-controls {
+          max-width: none;
+          padding: 10px;
+        }
+        .security-bottom {
+          grid-template-columns: minmax(0, 1fr) 56px;
         }
         .save {
-          width: 100%;
+          width: 56px;
         }
       }
     </style>
@@ -2016,28 +2059,32 @@ function renderArticleManagerRow(article) {
         <span class="status">${status}</span>
       </div>
     </div>
-    <form data-article-form method="post" action="/admin/article" autocomplete="off">
+    <form class="security-controls" data-article-form method="post" action="/admin/article" autocomplete="off">
       <input type="hidden" name="path" value="${escapeHtml(article.path)}" />
       <input type="hidden" name="action" value="password" />
-      <div>
-        <label class="switch-label" for="encrypted-${shortHash(article.path)}">加密</label>
-        <label class="switch">
-          <input id="encrypted-${shortHash(article.path)}" data-encrypted-toggle type="checkbox" name="encrypted"${checked} />
-          <span class="slider"></span>
+      <div class="security-top">
+        <label class="switch-control" for="encrypted-${shortHash(article.path)}">
+          <span class="switch-label">加密</span>
+          <span class="switch">
+            <input id="encrypted-${shortHash(article.path)}" data-encrypted-toggle type="checkbox" name="encrypted"${checked} />
+            <span class="slider"></span>
+          </span>
         </label>
+        <div class="hint">${updatedAt}</div>
       </div>
-      <div class="password-wrap">
-        <label for="password-${shortHash(article.path)}">独立密码</label>
-        <input id="password-${shortHash(article.path)}" name="password" type="password" value="${escapeHtml(password)}" autocomplete="off" />
-        <button class="icon-button" type="button" data-toggle-password aria-label="查看密码" title="查看密码" aria-pressed="false">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-            <circle cx="12" cy="12" r="2.6" stroke="currentColor" stroke-width="1.8"/>
-          </svg>
-        </button>
+      <div class="security-bottom">
+        <div class="password-wrap">
+          <label for="password-${shortHash(article.path)}">独立密码</label>
+          <input id="password-${shortHash(article.path)}" name="password" type="password" value="${escapeHtml(password)}" autocomplete="off" />
+          <button class="icon-button" type="button" data-toggle-password aria-label="查看密码" title="查看密码" aria-pressed="false">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="12" cy="12" r="2.6" stroke="currentColor" stroke-width="1.8"/>
+            </svg>
+          </button>
+        </div>
+        <button class="save" type="submit">保存</button>
       </div>
-      <button class="save" type="submit">保存</button>
-      <div class="hint">${updatedAt}</div>
     </form>
   </article>`;
 }
