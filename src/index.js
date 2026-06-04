@@ -1,6 +1,7 @@
 import { marked } from 'marked';
 
 const ADMIN_COOKIE = 'share_pages_admin';
+const ADMIN_CSRF_SCOPE = 'admin:article-settings';
 const AUTH_TTL_SECONDS = 30 * 24 * 60 * 60;
 const CATALOG_KEY = 'share_pages:catalog';
 const LEGACY_REDIRECTS_KEY = 'share_pages:legacy_redirects';
@@ -68,6 +69,7 @@ async function handleRequest(request, env) {
     }
 
     return htmlResponse(await renderAdminPage(env, {
+      request,
       catalog,
       notice: url.searchParams.get('notice') || '',
       error: url.searchParams.get('error') || '',
@@ -181,6 +183,16 @@ async function handleArticleSettingsUpdate(request, env, catalog) {
 
   try {
     const formData = await request.formData();
+    const csrf = await verifyAdminCsrfToken(request, env, formData);
+    if (!csrf.ok) {
+      console.warn('article settings update rejected: invalid csrf token', {
+        reason: csrf.reason,
+        hasSubmittedToken: csrf.hasSubmittedToken,
+      });
+      if (jsonMode) return jsonResponse({ ok: false, error: csrf.error }, 403);
+      return redirect(`/?error=${encodeURIComponent(csrf.error)}`);
+    }
+
     path = normalizePagePath(String(formData.get('path') || '/'));
     const article = findArticle(catalog, path);
 
@@ -975,6 +987,8 @@ function jsonResponse(body, status = 200, headers = {}) {
     status,
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
       ...headers,
     },
   });
@@ -1147,6 +1161,121 @@ async function isArticleAuthenticated(request, env, path, setting) {
   return verifySignedCookie(getCookie(request, articleCookieName(path)), articleCookieValue(path, setting), env);
 }
 
+async function createAdminCsrfToken(request, env) {
+  const adminCookie = getCookie(request, ADMIN_COOKIE) || '';
+  if (!adminCookie) return '';
+
+  const cookieDigest = await sign(`csrf-cookie:${adminCookie}`, env);
+  const payload = base64UrlEncode(JSON.stringify({
+    scope: ADMIN_CSRF_SCOPE,
+    cookieDigest,
+    issuedAt: Date.now(),
+  }));
+  const signature = await sign(`csrf-token:${payload}`, env);
+  return `${payload}.${signature}`;
+}
+
+async function verifyAdminCsrfToken(request, env, formData) {
+  const submittedToken = String(
+    request.headers.get('X-CSRF-Token') ||
+    formData.get('csrf') ||
+    '',
+  ).trim();
+
+  if (!submittedToken) {
+    return {
+      ok: false,
+      reason: 'missing-token',
+      hasSubmittedToken: false,
+      error: '安全校验缺失，请刷新页面后重试',
+    };
+  }
+
+  if (submittedToken.length > 2048) {
+    return {
+      ok: false,
+      reason: 'oversized-token',
+      hasSubmittedToken: true,
+      error: '安全校验无效，请刷新页面后重试',
+    };
+  }
+
+  const tokenParts = submittedToken.split('.');
+  if (tokenParts.length !== 2 || !tokenParts[0] || !tokenParts[1]) {
+    return {
+      ok: false,
+      reason: 'malformed-token',
+      hasSubmittedToken: true,
+      error: '安全校验无效，请刷新页面后重试',
+    };
+  }
+  const [payload, signature] = tokenParts;
+
+  const expectedSignature = await sign(`csrf-token:${payload}`, env);
+  if (!constantTimeEqual(signature, expectedSignature)) {
+    return {
+      ok: false,
+      reason: 'bad-signature',
+      hasSubmittedToken: true,
+      error: '安全校验无效，请刷新页面后重试',
+    };
+  }
+
+  const decodedPayload = safeBase64UrlDecode(payload);
+  if (!decodedPayload) {
+    return {
+      ok: false,
+      reason: 'decode-failed',
+      hasSubmittedToken: true,
+      error: '安全校验无效，请刷新页面后重试',
+    };
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(decodedPayload);
+  } catch {
+    return {
+      ok: false,
+      reason: 'json-failed',
+      hasSubmittedToken: true,
+      error: '安全校验无效，请刷新页面后重试',
+    };
+  }
+
+  const issuedAt = Number.parseInt(String(parsed.issuedAt || ''), 10);
+  if (parsed.scope !== ADMIN_CSRF_SCOPE || !Number.isFinite(issuedAt)) {
+    return {
+      ok: false,
+      reason: 'bad-payload',
+      hasSubmittedToken: true,
+      error: '安全校验无效，请刷新页面后重试',
+    };
+  }
+
+  if (Date.now() - issuedAt >= AUTH_TTL_SECONDS * 1000) {
+    return {
+      ok: false,
+      reason: 'expired-token',
+      hasSubmittedToken: true,
+      error: '安全校验已过期，请刷新页面后重试',
+    };
+  }
+
+  const adminCookie = getCookie(request, ADMIN_COOKIE) || '';
+  const expectedCookieDigest = await sign(`csrf-cookie:${adminCookie}`, env);
+  if (!constantTimeEqual(String(parsed.cookieDigest || ''), expectedCookieDigest)) {
+    return {
+      ok: false,
+      reason: 'cookie-mismatch',
+      hasSubmittedToken: true,
+      error: '安全校验已失效，请重新登录后再试',
+    };
+  }
+
+  return { ok: true };
+}
+
 async function createSignedCookie(name, value, env, request) {
   const payload = base64UrlEncode(JSON.stringify({ value, issuedAt: Date.now() }));
   const signature = await sign(payload, env);
@@ -1260,9 +1389,10 @@ function constantTimeEqual(left, right) {
   return result === 0;
 }
 
-async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = {}) {
+async function renderAdminPage(env, { request = null, catalog = [], notice = '', error = '' } = {}) {
   const articles = await getAdminArticleRows(env, catalog);
   const projects = groupArticles(articles);
+  const csrfToken = request ? await createAdminCsrfToken(request, env) : '';
   const noticeText = notice === 'saved' ? '设置已保存' : notice;
   const errorText = error === 'unknown-article' ? '没有找到这篇文章' : error;
   const initialToasts = [
@@ -1277,6 +1407,7 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="share-pages-admin-csrf" content="${escapeHtml(csrfToken)}" />
     <title>Share Pages</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <style>
@@ -1855,7 +1986,7 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
           ${renderHeaderControls(Boolean(projects.length))}
         </div>
       </header>
-      ${projects.length ? projects.map(renderProjectSection).join('') : renderEmptyState()}
+      ${projects.length ? projects.map((project) => renderProjectSection(project, csrfToken)).join('') : renderEmptyState()}
     </main>
     <script>
       const initialToasts = ${jsonForScript(initialToasts)};
@@ -1987,6 +2118,7 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
       const submitArticleSetting = async (form, action, successMessage) => {
         const formData = new FormData(form);
         formData.set('action', action);
+        const csrfToken = formData.get('csrf') || document.querySelector('meta[name="share-pages-admin-csrf"]')?.content || '';
         const actionUrl = new URL(form.getAttribute('action') || '/admin/article', window.location.href);
         const controller = new AbortController();
         const timeout = window.setTimeout(() => controller.abort(), 10000);
@@ -1997,6 +2129,7 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
             redirect: 'manual',
             headers: {
               Accept: 'application/json',
+              'X-CSRF-Token': csrfToken,
               'X-Requested-With': 'fetch',
             },
             body: formData,
@@ -2075,7 +2208,7 @@ async function renderAdminPage(env, { catalog = [], notice = '', error = '' } = 
 </html>`;
 }
 
-function renderProjectSection(project) {
+function renderProjectSection(project, csrfToken) {
   const key = `project:${project.name}`;
   const hash = shortHash(key);
   const panelId = `project-panel-${hash}`;
@@ -2092,13 +2225,13 @@ function renderProjectSection(project) {
     </h2>
     <div id="${panelId}" class="collapse-panel" data-collapse-panel>
       <div class="collapse-panel-inner">
-        ${project.categories.map((category) => renderCategorySection(category, project.name)).join('')}
+        ${project.categories.map((category) => renderCategorySection(category, project.name, csrfToken)).join('')}
       </div>
     </div>
   </section>`;
 }
 
-function renderCategorySection(category, projectName) {
+function renderCategorySection(category, projectName, csrfToken) {
   const key = `category:${projectName}:${category.name}`;
   const hash = shortHash(key);
   const panelId = `category-panel-${hash}`;
@@ -2115,7 +2248,7 @@ function renderCategorySection(category, projectName) {
     <div id="${panelId}" class="collapse-panel" data-collapse-panel>
       <div class="collapse-panel-inner">
         <div class="article-list">
-          ${category.articles.map(renderArticleManagerRow).join('')}
+          ${category.articles.map((article) => renderArticleManagerRow(article, csrfToken)).join('')}
         </div>
       </div>
     </div>
@@ -2160,7 +2293,7 @@ function renderEmptyState() {
   </section>`;
 }
 
-function renderArticleManagerRow(article) {
+function renderArticleManagerRow(article, csrfToken = '') {
   const checked = article.encrypted ? ' checked' : '';
   const status = article.encrypted ? '已加密' : '公开';
   const password = article.password;
@@ -2177,6 +2310,7 @@ function renderArticleManagerRow(article) {
     <form class="security-controls" data-article-form method="post" action="/admin/article" autocomplete="off">
       <input type="hidden" name="path" value="${escapeHtml(article.path)}" />
       <input type="hidden" name="action" value="password" />
+      <input type="hidden" name="csrf" value="${escapeHtml(csrfToken)}" />
       <div class="security-top">
         <label class="switch-control" for="encrypted-${shortHash(article.path)}">
           <span class="switch-label">加密</span>
@@ -2375,6 +2509,8 @@ function htmlResponse(body, status = 200, headers = {}) {
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'no-store',
+      'Referrer-Policy': 'no-referrer',
+      'X-Content-Type-Options': 'nosniff',
       ...headers,
     },
   });

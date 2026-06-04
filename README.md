@@ -8,6 +8,7 @@ The repository contains only reusable application code. Document metadata belong
 
 - Admin login for the root document index.
 - Cloudflare Turnstile verification.
+- Server-signed CSRF protection for admin mutations.
 - Per-article password settings.
 - R2-backed source document and favicon storage.
 - Runtime previews for HTML, Markdown, SVG, Mermaid, and plain text.
@@ -52,6 +53,7 @@ KV key `share_pages:catalog` stores:
 ```
 
 Article settings are stored separately as `article:<path>` in the same KV namespace.
+Admin mutation requests, such as article password and encryption changes, require both the signed admin cookie and a server-signed CSRF token rendered into the admin page. The token is submitted in the request body/header, not in the URL.
 
 R2 stores:
 
