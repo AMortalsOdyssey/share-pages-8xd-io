@@ -1410,9 +1410,25 @@ async function renderAdminPage(env, { request = null, catalog = [], notice = '',
     <meta name="share-pages-admin-csrf" content="${escapeHtml(csrfToken)}" />
     <title>Share Pages</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <script>
+      (() => {
+        const storageKey = 'share-pages-admin-theme-v1';
+        const systemTheme = () => (
+          window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+        );
+        try {
+          const storedTheme = window.localStorage.getItem(storageKey);
+          const theme = storedTheme === 'dark' || storedTheme === 'light' ? storedTheme : systemTheme();
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
+        } catch {
+          document.documentElement.dataset.theme = systemTheme();
+        }
+      })();
+    </script>
     <style>
       :root {
-        color-scheme: light dark;
+        color-scheme: light;
         --bg: #f7f8fb;
         --panel: #ffffff;
         --text: #17202a;
@@ -1422,9 +1438,14 @@ async function renderAdminPage(env, { request = null, catalog = [], notice = '',
         --accent-soft: #d9f8f4;
         --danger: #b42318;
         --success: #117a4b;
+        --control-bg: #fbfcfe;
+        --save-hover: #0b5f58;
+        --tooltip-bg: #17202a;
+        --tooltip-text: #ffffff;
       }
       @media (prefers-color-scheme: dark) {
-        :root {
+        :root:not([data-theme="light"]) {
+          color-scheme: dark;
           --bg: #0f1720;
           --panel: #162231;
           --text: #edf2f7;
@@ -1434,7 +1455,43 @@ async function renderAdminPage(env, { request = null, catalog = [], notice = '',
           --accent-soft: #113e3a;
           --danger: #ff7b72;
           --success: #70e0a3;
+          --control-bg: #111b28;
+          --save-hover: #20b8aa;
+          --tooltip-bg: #edf2f7;
+          --tooltip-text: #111827;
         }
+      }
+      :root[data-theme="dark"] {
+        color-scheme: dark;
+        --bg: #0f1720;
+        --panel: #162231;
+        --text: #edf2f7;
+        --muted: #aeb8c5;
+        --line: #2c3a4a;
+        --accent: #2dd4bf;
+        --accent-soft: #113e3a;
+        --danger: #ff7b72;
+        --success: #70e0a3;
+        --control-bg: #111b28;
+        --save-hover: #20b8aa;
+        --tooltip-bg: #edf2f7;
+        --tooltip-text: #111827;
+      }
+      :root[data-theme="light"] {
+        color-scheme: light;
+        --bg: #f7f8fb;
+        --panel: #ffffff;
+        --text: #17202a;
+        --muted: #657282;
+        --line: #d8dee8;
+        --accent: #0f766e;
+        --accent-soft: #d9f8f4;
+        --danger: #b42318;
+        --success: #117a4b;
+        --control-bg: #fbfcfe;
+        --save-hover: #0b5f58;
+        --tooltip-bg: #17202a;
+        --tooltip-text: #ffffff;
       }
       * { box-sizing: border-box; }
       body {
@@ -1483,6 +1540,7 @@ async function renderAdminPage(env, { request = null, catalog = [], notice = '',
         border-radius: 999px;
         background: var(--panel);
       }
+      .theme-toggle,
       .tree-toggle,
       .logout {
         position: relative;
@@ -1498,21 +1556,36 @@ async function renderAdminPage(env, { request = null, catalog = [], notice = '',
         cursor: pointer;
         transition: background 160ms ease, color 160ms ease, transform 160ms ease;
       }
+      .theme-toggle:hover,
       .tree-toggle:hover,
       .logout:hover {
         background: var(--accent-soft);
         color: var(--accent);
         transform: translateY(-1px);
       }
+      .theme-toggle svg,
       .tree-toggle svg,
       .logout svg {
         width: 18px;
         height: 18px;
         overflow: visible;
       }
+      .theme-toggle .icon-state,
       .tree-toggle .icon-state {
         transform-origin: center;
         transition: opacity 160ms ease, transform 180ms ease;
+      }
+      .theme-toggle .state-sun {
+        opacity: 0;
+        transform: rotate(-35deg) scale(0.72);
+      }
+      :root[data-theme="dark"] .theme-toggle .state-moon {
+        opacity: 0;
+        transform: rotate(25deg) scale(0.72);
+      }
+      :root[data-theme="dark"] .theme-toggle .state-sun {
+        opacity: 1;
+        transform: rotate(0deg) scale(1);
       }
       .tree-toggle[data-global-state="expanded"] .state-collapsed,
       .tree-toggle[data-global-state="collapsed"] .state-expanded {
@@ -1764,7 +1837,7 @@ async function renderAdminPage(env, { request = null, catalog = [], notice = '',
         padding: 6px 7px;
         border: 1px solid var(--line);
         border-radius: 6px;
-        background: #fbfcfe;
+        background: var(--control-bg);
       }
       .security-top,
       .security-bottom {
@@ -1840,7 +1913,7 @@ async function renderAdminPage(env, { request = null, catalog = [], notice = '',
         top: -5px;
         z-index: 1;
         padding: 0 3px;
-        background: #fbfcfe;
+        background: var(--control-bg);
         color: var(--muted);
         font-size: 9px;
         font-weight: 650;
@@ -1892,7 +1965,7 @@ async function renderAdminPage(env, { request = null, catalog = [], notice = '',
         transition: background 160ms ease, transform 160ms ease;
       }
       .save:hover {
-        background: #0f766e;
+        background: var(--save-hover);
       }
       .save:hover::after,
       .save:focus-visible::after {
@@ -1902,8 +1975,8 @@ async function renderAdminPage(env, { request = null, catalog = [], notice = '',
         bottom: calc(100% + 5px);
         padding: 3px 6px;
         border-radius: 4px;
-        background: var(--text);
-        color: #fff;
+        background: var(--tooltip-bg);
+        color: var(--tooltip-text);
         font-size: 11px;
         line-height: 1;
         white-space: nowrap;
@@ -1991,6 +2064,53 @@ async function renderAdminPage(env, { request = null, catalog = [], notice = '',
     <script>
       const initialToasts = ${jsonForScript(initialToasts)};
       const toastViewport = document.querySelector('.toast-viewport');
+      const themeStorageKey = 'share-pages-admin-theme-v1';
+      const themeToggle = document.querySelector('[data-theme-toggle]');
+      const getSystemTheme = () => (
+        window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+      );
+      const getStoredTheme = () => {
+        try {
+          const theme = window.localStorage.getItem(themeStorageKey);
+          return theme === 'dark' || theme === 'light' ? theme : '';
+        } catch {
+          return '';
+        }
+      };
+      const setStoredTheme = (theme) => {
+        try {
+          window.localStorage.setItem(themeStorageKey, theme);
+        } catch {
+          // Theme switching remains available even when storage is blocked.
+        }
+      };
+      const updateThemeButton = (theme) => {
+        if (!themeToggle) return;
+        const label = theme === 'dark' ? '切换到日间模式' : '切换到夜间模式';
+        themeToggle.setAttribute('aria-label', label);
+        themeToggle.setAttribute('title', label);
+        themeToggle.setAttribute('aria-pressed', String(theme === 'dark'));
+      };
+      const applyTheme = (theme, persist = false) => {
+        const nextTheme = theme === 'dark' ? 'dark' : 'light';
+        document.documentElement.dataset.theme = nextTheme;
+        document.documentElement.style.colorScheme = nextTheme;
+        updateThemeButton(nextTheme);
+        if (persist) setStoredTheme(nextTheme);
+      };
+      applyTheme(document.documentElement.dataset.theme || getStoredTheme() || getSystemTheme());
+      if (themeToggle) {
+        themeToggle.addEventListener('click', () => {
+          const nextTheme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+          applyTheme(nextTheme, true);
+        });
+      }
+      if (window.matchMedia) {
+        const colorPreference = window.matchMedia('(prefers-color-scheme: dark)');
+        colorPreference.addEventListener?.('change', () => {
+          if (!getStoredTheme()) applyTheme(getSystemTheme());
+        });
+      }
       const showToast = (message, type = 'success') => {
         if (!message) return;
         const toast = document.createElement('div');
@@ -2257,6 +2377,17 @@ function renderCategorySection(category, projectName, csrfToken) {
 
 function renderHeaderControls(hasProjects) {
   return `<div class="tree-toolbar" aria-label="目录展开控制">
+    <button class="theme-toggle" type="button" data-theme-toggle aria-label="切换到夜间模式" title="切换到夜间模式" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <g class="icon-state state-moon">
+          <path d="M20 15.5A8.2 8.2 0 0 1 8.5 4a7 7 0 1 0 11.5 11.5Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </g>
+        <g class="icon-state state-sun">
+          <circle cx="12" cy="12" r="4.2" stroke="currentColor" stroke-width="1.8"/>
+          <path d="M12 2.8v2.1M12 19.1v2.1M4.9 4.9l1.5 1.5M17.6 17.6l1.5 1.5M2.8 12h2.1M19.1 12h2.1M4.9 19.1l1.5-1.5M17.6 6.4l1.5-1.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </g>
+      </svg>
+    </button>
     ${hasProjects ? `<button class="tree-toggle" type="button" data-collapse-toggle-all data-global-state="expanded" aria-label="一键收起全部" title="一键收起全部">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <g class="icon-state state-expanded">
