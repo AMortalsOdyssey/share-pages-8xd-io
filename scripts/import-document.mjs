@@ -242,11 +242,12 @@ async function readRemoteCatalog({ namespaceId, configPath, transport, accountId
     if (response.status === 404) return [];
     if (!response.ok) await throwCloudflareError(response, 'read KV catalog');
 
+    const body = await response.text();
     try {
-      const parsed = JSON.parse(await response.text());
+      const parsed = JSON.parse(body);
       return Array.isArray(parsed) ? parsed : parsed.articles || [];
-    } catch {
-      return [];
+    } catch (error) {
+      throw new Error(`Unable to parse remote KV catalog JSON: ${error.message}`);
     }
   }
 
@@ -259,18 +260,37 @@ async function readRemoteCatalog({ namespaceId, configPath, transport, accountId
     encoding: 'utf8',
   });
 
-  if (result.status !== 0) return [];
+  const output = [result.stdout, result.stderr].filter(Boolean).join('\n').trim();
+  if (result.status !== 0) {
+    if (isMissingCatalogOutput(output)) return [];
+    throw new Error(`Unable to read remote KV catalog: ${summarizeCommandOutput(output, result.status)}`);
+  }
 
   const stdout = result.stdout.trim();
   const jsonStart = stdout.indexOf('{');
-  if (jsonStart === -1) return [];
+  if (jsonStart === -1) {
+    if (!stdout || isMissingCatalogOutput(output)) return [];
+    throw new Error(`Remote KV catalog did not contain JSON: ${summarizeCommandOutput(output, result.status)}`);
+  }
 
   try {
     const parsed = JSON.parse(stdout.slice(jsonStart));
     return Array.isArray(parsed) ? parsed : parsed.articles || [];
-  } catch {
-    return [];
+  } catch (error) {
+    throw new Error(`Unable to parse remote KV catalog JSON: ${error.message}`);
   }
+}
+
+function isMissingCatalogOutput(output) {
+  return /(?:key|value)\b[^\n]{0,120}\b(?:not found|not exist|does not exist)\b/i.test(output)
+    || /(?:not found|not exist|does not exist)\b[^\n]{0,120}\b(?:key|value)\b/i.test(output)
+    || /\bno (?:such )?(?:key|value)(?: found)?\b/i.test(output)
+    || /\bcouldn'?t find\b[^\n]{0,120}\b(?:key|value)\b/i.test(output);
+}
+
+function summarizeCommandOutput(output, status) {
+  const text = output || `exit status ${status}`;
+  return text.length > 1200 ? `${text.slice(0, 1200)}...` : text;
 }
 
 async function putR2Object({ accountId, apiToken, bucket, key, body, contentType }) {
