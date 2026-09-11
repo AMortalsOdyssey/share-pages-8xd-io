@@ -7,6 +7,8 @@
     "check": "wrangler deploy --dry-run --config wrangler.jsonc",
     "deploy": "wrangler deploy --config wrangler.jsonc",
     "dev": "wrangler dev --config wrangler.jsonc",
+    "hub:migrate:local": "wrangler d1 migrations apply HUB_DB --local --config wrangler.jsonc",
+    "hub:migrate:remote": "wrangler d1 migrations apply HUB_DB --remote --config wrangler.jsonc",
     "import:html": "node scripts/import-html.mjs",
     "import:document": "node scripts/import-document.mjs"
   },

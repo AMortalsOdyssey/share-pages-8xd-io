@@ -20,11 +20,53 @@
     {
       "binding": "SHARE_PAGES_CONTENT",
       "bucket_name": "<YOUR_R2_BUCKET_NAME>"
+    },
+    {
+      "binding": "HUB_MAILBOX",
+      "bucket_name": "<YOUR_MAILBOX_R2_BUCKET_NAME>"
     }
   ],
+  "d1_databases": [
+    {
+      "binding": "HUB_DB",
+      "database_name": "<YOUR_HUB_D1_DATABASE_NAME>",
+      "database_id": "<YOUR_HUB_D1_DATABASE_ID>",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "analytics_engine_datasets": [
+    {
+      "binding": "HUB_ANALYTICS",
+      "dataset": "8xd_hub_events"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "HUB_EVENTS",
+        "queue": "8xd-hub-events"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "8xd-hub-events",
+        "max_batch_size": 10,
+        "max_batch_timeout": 30,
+        "max_retries": 3
+      }
+    ]
+  },
+  "triggers": {
+    "crons": [
+      "*/15 * * * *"
+    ]
+  },
   "vars": {
     "TURNSTILE_ENABLED": "true",
-    "TURNSTILE_SITE_KEY": "<YOUR_TURNSTILE_SITE_KEY>"
+    "TURNSTILE_SITE_KEY": "<YOUR_TURNSTILE_SITE_KEY>",
+    "HUB_MONITOR_TARGETS": "[{\"id\":\"8xd\",\"label\":\"8xd.io\",\"url\":\"https://8xd.io/\"},{\"id\":\"share-pages\",\"label\":\"Share Pages\",\"url\":\"https://share-pages.8xd.io/\"},{\"id\":\"images\",\"label\":\"Image Host\",\"url\":\"https://img.8xd.io/\"},{\"id\":\"dashboard\",\"label\":\"Dashboard\",\"url\":\"https://dashboard.8xd.io/\"}]",
+    "HUB_EMAIL_MAX_BYTES": "10485760",
+    "HUB_MAIL_FORWARD_TO": ""
   },
   "routes": [
     {

@@ -14,11 +14,16 @@ The repository contains only reusable application code. Document metadata belong
 - Runtime previews for HTML, Markdown, SVG, Mermaid, and plain text.
 - KV-backed catalog and article settings.
 - Worker-first routing so protected documents cannot bypass article auth.
+- 8XD Cloudflare Hub at `/hub` for short links, uptime checks, inbound email indexing, and edge event aggregates.
+- Optional Queue and Analytics Engine bindings for asynchronous event ingestion.
+- Optional Email Worker handler for Cloudflare Email Routing.
 - Optional QuickShare submodule for the broader HTML/Markdown/SVG/Mermaid sharing workflow.
 
 ## Repository Layout
 
-- `src/index.js` - Worker application and admin UI.
+- `src/index.js` - Worker application, Share Pages admin UI, and handler wiring.
+- `src/hub.js` - 8XD Cloudflare Hub routes, short links, monitor checks, email handling, and event aggregation.
+- `migrations/` - D1 migrations for Hub data.
 - `public/` - generic static fallback assets.
 - `scripts/import-document.mjs` - imports local HTML, Markdown, SVG, Mermaid, or text into R2 and updates the KV catalog.
 - `scripts/import-html.mjs` - legacy HTML-only import helper.
@@ -60,6 +65,47 @@ R2 stores:
 - `pages/<id>/index.html` or `index.md` / `index.svg` / `index.mmd` / `index.txt`
 - `pages/<id>/favicon.svg`
 
+## 8XD Cloudflare Hub
+
+The Hub is an optional layer behind the same admin login. It is available at `/hub` after deployment.
+
+It adds:
+
+- Short links at `/s/<slug>` and `/go/<slug>`, with click counts and daily aggregates.
+- Site monitoring through Worker Cron Triggers.
+- Inbound email metadata in D1 and raw `.eml` archival in R2.
+- Event aggregation through D1, with optional Queue buffering and Analytics Engine writes.
+
+Hub D1 tables:
+
+- `hub_short_links`
+- `hub_event_daily`
+- `hub_monitor_targets`
+- `hub_monitor_checks`
+- `hub_inbound_emails`
+
+Create the extra resources when enabling Hub:
+
+```bash
+npx wrangler d1 create 8xd-hub
+npx wrangler r2 bucket create 8xd-mailbox
+npx wrangler queues create 8xd-hub-events
+```
+
+Then add the generated D1 `database_id` to `wrangler.jsonc`, keep the bindings from `wrangler.example.jsonc`, and run:
+
+```bash
+npm run hub:migrate:remote
+```
+
+For local D1 development:
+
+```bash
+npm run hub:migrate:local
+```
+
+To receive email, enable Cloudflare Email Routing for the domain and route the desired address or catch-all rule to this Worker. Set `HUB_MAIL_FORWARD_TO` only when you also want Cloudflare to forward a copy to a verified destination address.
+
 ## Local Setup
 
 Install dependencies:
@@ -79,6 +125,7 @@ Create or select these Cloudflare resources, then fill in `wrangler.jsonc`:
 ```bash
 npx wrangler kv namespace create SHARE_PAGES_CONFIG
 npx wrangler r2 bucket create share-pages-content
+npx wrangler d1 create 8xd-hub
 ```
 
 Configure secrets with Wrangler or the Cloudflare dashboard:
@@ -188,6 +235,7 @@ npm run deploy
 - Copy or recreate local `wrangler.jsonc`.
 - Log in to Cloudflare with `npx wrangler login`.
 - Ensure the same KV namespace, R2 bucket, custom domain, Turnstile widget, and Worker secrets are available in the Cloudflare account.
+- If Hub is enabled, also ensure the D1 database, optional mailbox R2 bucket, optional Queue, Cron Trigger, and Email Routing rule exist.
 - Re-run `npm run check` before deploying.
 
 ## License

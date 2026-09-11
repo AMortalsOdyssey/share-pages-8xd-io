@@ -1,4 +1,13 @@
 import { marked } from 'marked';
+import {
+  handleHubAdminRequest,
+  handleHubEmail,
+  handleHubPublicRequest,
+  handleHubQueue,
+  handleHubScheduled,
+  isHubAdminPath,
+  isHubPublicPath,
+} from './hub.js';
 
 const ADMIN_COOKIE = 'share_pages_admin';
 const ADMIN_CSRF_SCOPE = 'admin:article-settings';
@@ -9,25 +18,68 @@ const DEFAULT_PROJECT = 'Documents';
 const DEFAULT_CATEGORY = 'General';
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     try {
-      return await handleRequest(request, env);
+      return await handleRequest(request, env, ctx);
     } catch (error) {
       console.error('share-pages worker error', error);
       return htmlResponse(renderErrorPage(), 500);
     }
   },
+  async scheduled(controller, env, ctx) {
+    try {
+      await handleHubScheduled(controller, env, ctx);
+    } catch (error) {
+      console.error('hub scheduled handler failed', error);
+    }
+  },
+  async queue(batch, env) {
+    try {
+      await handleHubQueue(batch, env);
+    } catch (error) {
+      console.error('hub queue handler failed', error);
+      throw error;
+    }
+  },
+  async email(message, env, ctx) {
+    try {
+      await handleHubEmail(message, env, ctx);
+    } catch (error) {
+      console.error('hub email handler failed', {
+        from: message?.from,
+        to: message?.to,
+        error,
+      });
+      message?.setReject?.('Mailbox processing failed');
+    }
+  },
 };
 
-async function handleRequest(request, env) {
+async function handleRequest(request, env, ctx) {
   const url = new URL(request.url);
-  const normalizedPath = normalizePagePath(url.pathname);
-  const catalog = await getArticleCatalog(env);
-  const requestedArticle = findArticleForRequestPath(catalog, url.pathname);
 
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204 });
   }
+
+  if (isHubPublicPath(url.pathname)) {
+    return handleHubPublicRequest(request, env, ctx, hubUiContext());
+  }
+
+  if (isHubAdminPath(url.pathname)) {
+    if (!(await isAdminAuthenticated(request, env))) {
+      if (wantsJson(request) || url.pathname.startsWith('/api/')) {
+        return jsonResponse({ ok: false, error: '请重新登录后再操作' }, 401);
+      }
+      return redirect('/login');
+    }
+
+    return handleHubAdminRequest(request, env, ctx, hubUiContext(request, env));
+  }
+
+  const normalizedPath = normalizePagePath(url.pathname);
+  const catalog = await getArticleCatalog(env);
+  const requestedArticle = findArticleForRequestPath(catalog, url.pathname);
 
   const legacyTarget = await getLegacyRedirectTarget(env, normalizedPath);
   if (legacyTarget) return redirect(legacyTarget);
@@ -105,6 +157,17 @@ async function handleRequest(request, env) {
 
   if (url.pathname !== '/') return redirect('/');
   return assetResponse;
+}
+
+function hubUiContext(request = null, env = null) {
+  return {
+    htmlResponse,
+    jsonResponse,
+    redirect,
+    escapeHtml,
+    createAdminCsrfToken: request && env ? () => createAdminCsrfToken(request, env) : null,
+    verifyAdminCsrfToken: (formData) => verifyAdminCsrfToken(request, env, formData),
+  };
 }
 
 async function handleAdminLogin(request, env) {
@@ -1542,6 +1605,7 @@ async function renderAdminPage(env, { request = null, catalog = [], notice = '',
       }
       .theme-toggle,
       .tree-toggle,
+      .hub-link,
       .logout {
         position: relative;
         display: grid;
@@ -1558,6 +1622,7 @@ async function renderAdminPage(env, { request = null, catalog = [], notice = '',
       }
       .theme-toggle:hover,
       .tree-toggle:hover,
+      .hub-link:hover,
       .logout:hover {
         background: var(--accent-soft);
         color: var(--accent);
@@ -1565,6 +1630,7 @@ async function renderAdminPage(env, { request = null, catalog = [], notice = '',
       }
       .theme-toggle svg,
       .tree-toggle svg,
+      .hub-link svg,
       .logout svg {
         width: 18px;
         height: 18px;
@@ -1607,6 +1673,7 @@ async function renderAdminPage(env, { request = null, catalog = [], notice = '',
       .tree-toggle[data-global-state="collapsed"]:hover .state-collapsed .bottom-triangle {
         transform: translateY(1.5px);
       }
+      .hub-link,
       .logout {
         text-decoration: none;
       }
@@ -2400,6 +2467,12 @@ function renderHeaderControls(hasProjects) {
         </g>
       </svg>
     </button>` : ''}
+    <a class="hub-link" href="/hub" aria-label="8XD Hub" title="8XD Hub">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M4.5 12a7.5 7.5 0 0 1 15 0v5.2a2.3 2.3 0 0 1-2.3 2.3H6.8a2.3 2.3 0 0 1-2.3-2.3V12Z" stroke="currentColor" stroke-width="1.8"/>
+        <path d="M8 12.2h8M8 15.8h5.5M9 8.2h.01M12 8.2h.01M15 8.2h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+    </a>
     <a class="logout" href="/logout" aria-label="退出" title="退出">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <path d="M9 5H6.8A1.8 1.8 0 0 0 5 6.8v10.4A1.8 1.8 0 0 0 6.8 19H9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>

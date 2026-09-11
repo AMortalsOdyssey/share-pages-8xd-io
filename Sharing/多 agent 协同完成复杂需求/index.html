@@ -1,0 +1,1041 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>多 Agent 协同完成复杂需求：从方案对齐到 Goal 执行控制</title>
+  <meta name="description" content="一套用于复杂需求落地的多 Agent 协同系统：从需求逐点对齐、方案落档、契约冻结、Goal 派发到验收部署，形成可审计、可续跑、可验收的执行框架。" />
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #172033;
+      --muted: #5d6b7c;
+      --paper: #ffffff;
+      --wash: #f5f7fb;
+      --line: #d9e2ec;
+      --accent: #0f766e;
+      --accent-strong: #0a5e57;
+      --accent-soft: #d9f7f2;
+      --blue: #1d4ed8;
+      --blue-soft: #e8f0ff;
+      --gold: #a16207;
+      --gold-soft: #fff7d6;
+      --red: #b42318;
+      --red-soft: #fff1f0;
+      --shadow: 0 18px 45px rgba(23, 32, 51, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--wash);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.72;
+      letter-spacing: 0;
+    }
+    a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+    code {
+      padding: 0.14em 0.36em;
+      border-radius: 5px;
+      background: var(--accent-soft);
+      color: #075e54;
+      font-size: 0.92em;
+    }
+    .page {
+      width: min(1240px, calc(100vw - 32px));
+      margin: 36px auto;
+      display: grid;
+      grid-template-columns: minmax(0, 920px) 260px;
+      gap: 24px;
+      align-items: start;
+    }
+    main {
+      min-width: 0;
+      padding: clamp(22px, 4vw, 46px);
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+    }
+    .outline {
+      position: sticky;
+      top: 24px;
+      max-height: calc(100vh - 48px);
+      overflow-y: auto;
+      padding: 18px;
+      background: rgba(255, 255, 255, 0.86);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      box-shadow: 0 14px 35px rgba(23, 32, 51, 0.07);
+    }
+    .outline .label {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .outline a {
+      display: block;
+      padding: 8px 0;
+      color: var(--ink);
+      font-size: 14px;
+      text-decoration: none;
+      border-top: 1px solid rgba(217, 226, 236, 0.74);
+    }
+    .outline a:hover { color: var(--accent); }
+    .eyebrow {
+      margin: 0 0 12px;
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 0;
+      max-width: 820px;
+      font-size: clamp(34px, 5.2vw, 58px);
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+    .lead {
+      margin: 22px 0 0;
+      max-width: 820px;
+      color: #334155;
+      font-size: 18px;
+    }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 24px 0 0;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 4px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fbfdff;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 650;
+    }
+    section { margin-top: 54px; }
+    h2 {
+      margin: 0 0 16px;
+      font-size: clamp(24px, 3vw, 32px);
+      line-height: 1.22;
+      letter-spacing: 0;
+    }
+    h3 {
+      margin: 28px 0 10px;
+      font-size: 19px;
+      line-height: 1.35;
+      letter-spacing: 0;
+    }
+    p { margin: 0 0 14px; }
+    .callout {
+      margin: 26px 0;
+      padding: 20px 22px;
+      border: 1px solid var(--line);
+      border-left: 5px solid var(--accent);
+      border-radius: 8px;
+      background: linear-gradient(90deg, rgba(217, 247, 242, 0.75), rgba(255, 255, 255, 0.92));
+    }
+    .callout strong {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--accent-strong);
+      font-size: 15px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 18px;
+    }
+    .card {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfdff;
+    }
+    .card h3 { margin-top: 0; }
+    .card p:last-child { margin-bottom: 0; }
+    .number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      margin-right: 8px;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 800;
+    }
+    table {
+      width: 100%;
+      margin: 18px 0 28px;
+      border-collapse: collapse;
+      border: 1px solid var(--line);
+      background: #fff;
+      font-size: 14px;
+    }
+    th, td {
+      padding: 13px 14px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      text-align: left;
+    }
+    th {
+      background: #f1f5f9;
+      color: #334155;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    tr:last-child td { border-bottom: none; }
+    .tree, .flow {
+      margin: 20px 0;
+      padding: 20px;
+      overflow-x: auto;
+      border-radius: 8px;
+      background: #111827;
+      color: #dbeafe;
+      font: 13px/1.75 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      white-space: pre;
+    }
+    .flow { color: #d1fae5; }
+    .stack {
+      display: grid;
+      gap: 12px;
+      margin-top: 18px;
+    }
+    .step {
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 12px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+    .step b {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 999px;
+      background: var(--blue-soft);
+      color: var(--blue);
+      font-size: 14px;
+    }
+    .step h3 { margin: 2px 0 4px; }
+    .step p { margin-bottom: 0; color: #475569; }
+    .highlight {
+      background: linear-gradient(180deg, transparent 55%, rgba(217, 247, 242, 0.95) 0);
+      font-weight: 800;
+    }
+    .warning {
+      border-left-color: var(--gold);
+      background: linear-gradient(90deg, var(--gold-soft), rgba(255, 255, 255, 0.92));
+    }
+    .warning strong { color: var(--gold); }
+    .danger {
+      border-left-color: var(--red);
+      background: linear-gradient(90deg, var(--red-soft), rgba(255, 255, 255, 0.92));
+    }
+    .danger strong { color: var(--red); }
+    .checklist {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+    .check {
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+    .check::before {
+      content: "✓";
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      margin-right: 8px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent-strong);
+      font-weight: 900;
+    }
+    footer {
+      margin-top: 54px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+    @media (max-width: 980px) {
+      .page { display: block; width: min(100% - 24px, 920px); margin: 18px auto; }
+      .outline { position: static; margin-top: 18px; }
+      .grid, .checklist { grid-template-columns: 1fr; }
+      main { padding: 24px 18px; }
+      table { display: block; overflow-x: auto; white-space: nowrap; }
+      .lead { font-size: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <main>
+      <p class="eyebrow">Multi-Agent Delivery System</p>
+      <h1>多 Agent 协同完成复杂需求：从方案对齐到 Goal 执行控制</h1>
+      <p class="lead">
+        复杂需求不能只靠“多开几个 Agent”提速。真正可控的做法，是把需求讨论、方案确认、分工、契约、执行、验收和回滚都外化成文件系统里的协作协议，让每个 Agent 都在同一套事实、边界和证据标准下工作。
+      </p>
+      <div class="meta">
+        <span class="pill">最终版协同框架</span>
+        <span class="pill">逐点方案对齐</span>
+        <span class="pill">单一真相源</span>
+        <span class="pill">Goal 模式</span>
+        <span class="pill">契约冻结</span>
+        <span class="pill">证据化验收</span>
+      </div>
+
+      <section id="summary">
+        <h2>一、核心结论</h2>
+        <div class="callout">
+          <strong>最终方案</strong>
+          多 Agent 协同的核心不是“并行写代码”，而是先搭出一个可审计的执行系统：需求状态只认矩阵，讨论结论只认方案落档，接口协议只认契约文件，长跑任务只认 Goal 手册，合并发布只认集成与回滚手册。主 Agent 不做主要业务开发，而是维护这套系统的秩序。
+        </div>
+        <p>
+          这套协同区的目标，是支撑一个跨服务端、客户端、Web、Agent 配置、测试发布的复杂需求。它要解决的不是单个函数怎么写，而是更难的工程问题：多个 Agent 如何在三天级别的高压节奏里不跑偏、不互相覆盖、不口头完成、不因为外部依赖卡死。
+        </p>
+        <p>
+          因此，最终版没有把协同区做成“资料堆”。它被设计成一个 <span class="highlight">文件系统里的项目操作系统</span>：每份文档承担一个明确职责，同类信息只在一个地方维护，任何状态变化都能追到 owner、证据和下一步。
+        </p>
+      </section>
+
+      <section id="design">
+        <h2>二、设计目标</h2>
+        <div class="grid">
+          <div class="card">
+            <h3><span class="number">1</span>让上下文可恢复</h3>
+            <p>长任务会经历中断、压缩和多人接力。协同区必须让任何 Agent 重新进入时，都能知道当前阶段、未闭环项、风险假设和下一步。</p>
+          </div>
+          <div class="card">
+            <h3><span class="number">2</span>让并行不互踩</h3>
+            <p>多个 Agent 可以并行，但不能共享模糊边界。每个仓库、路径和文件都需要写 owner，跨 owner 改动必须走同步协议。</p>
+          </div>
+          <div class="card">
+            <h3><span class="number">3</span>让协议不漂移</h3>
+            <p>跨端需求最容易出现“大家都以为自己理解对了”。最终版把协议冻结从 Markdown 表格升级为共享 schema、fixture 和契约检查命令。</p>
+          </div>
+          <div class="card">
+            <h3><span class="number">4</span>让完成可证明</h3>
+            <p>“做完了”不能靠口头。每个 Feature 的 done 都必须挂上绿色命令、commit、截图或录屏证据，缺证据就回到 in-review。</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="structure">
+        <h2>三、协同区文件系统组织</h2>
+        <p>
+          协同区按“入口、事实、执行、记录、可视化”分层。入口负责导航，事实文档负责单一真相源，执行文档负责分工与验收，记录目录负责留下主 Agent 与子 Agent 的活动轨迹。
+        </p>
+        <div class="tree">协同区/
+├─ 00_INDEX.md                         # 总入口、单一真相源归属、当前基线
+├─ 01_需求范围与Feature List.md          # 定义需求，不维护完成状态
+├─ 02_现有实现盘点.md                    # 当前代码能力与可复用边界
+├─ 03_技术方案与协议草案.md              # 草案区，冻结后以契约文档为准
+├─ 04_分工与子Agent任务.md               # 分工入口与任务书索引
+├─ 05_里程碑与排期.md                    # 节奏与依赖
+├─ 06_风险与待确认.md                    # 风险清单与待拍板项
+├─ 07_仓库分支与代码改动地图.md          # 预计改动面
+├─ 08_测试部署验收手册.md                # 怎么验证，不维护完成状态
+├─ 09_主Agent指挥台.md                   # 主控状态、派发模式、Resume 锚点
+├─ 10_需求追踪矩阵.md                    # 需求完成情况 SSOT
+├─ 11_契约冻结与Fixture.md               # 跨端协议 SSOT
+├─ 12_Goal模式运行手册.md                # Goal 自主运行 SSOT
+├─ 13_集成与回滚手册.md                  # 文件所有权、合并、回滚 SSOT
+├─ 14_讨论确认与开工门禁.md              # 讨论阶段的确认项与启动门槛
+├─ 15_Web前端对接清单.md                 # 给 Web / H5 同事的协议与改动清单
+├─ 16_Path_A_B_汇合方案.md               # 主流程路径方案
+├─ 17_第一次开口方案.md                  # 首次开口页数据与职责边界
+├─ 18_会话恢复_最终确认_最终创建方案.md   # 恢复、确认、创建与幂等方案
+├─ agents/                              # 各子 Agent 任务书
+├─ logs/                                # 主控日志与客观 run log
+├─ sync/                                # 派发、反馈、未闭环事项
+├─ decisions/                           # 架构与产品决策记录
+├─ reviews/                             # Code review 与独立复核记录
+├─ 任务看板.base                         # Obsidian Base 索引视图
+└─ 协作总览.canvas                       # 协作关系图</div>
+        <p>
+          这个结构的关键，是把“状态”从普通说明文档里抽出来。需求文档只定义 Feature，验收手册只定义怎么验，真正的完成情况只在追踪矩阵里维护。这样一来，状态不会散落在多个文件里互相打架。
+        </p>
+      </section>
+
+      <section id="ssot">
+        <h2>四、四个单一真相源</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>文档</th>
+              <th>唯一负责的信息</th>
+              <th>为什么必须单列</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>10_需求追踪矩阵</code></td>
+              <td>Feature 状态、Owner、分支、验收命令、证据、DoD、滚动汇总。</td>
+              <td>防止“看板说完成、任务书说阻塞、需求文档说待定”的状态漂移。</td>
+            </tr>
+            <tr>
+              <td><code>11_契约冻结与Fixture</code></td>
+              <td>共享 schema、双向 fixture、契约检查命令、消费方签收。</td>
+              <td>防止 Backend、H5、Mobile 各自复制一份协议并逐渐分叉。</td>
+            </tr>
+            <tr>
+              <td><code>12_Goal模式运行手册</code></td>
+              <td>Resume 顺序、自主假设、升级阈值、停止条件、独立验证、Goal Plan 格式。</td>
+              <td>Goal 模式会把人从 checkpoint 抽走，必须提前定义能自走和必须停下的边界。</td>
+            </tr>
+            <tr>
+              <td><code>13_集成与回滚手册</code></td>
+              <td>文件所有权、worktree 隔离、集成 DAG、合并人、回滚安全态、冲突协议。</td>
+              <td>多 Agent 并行最大风险不是慢，而是两个 worker 在同仓同文件互相覆盖。</td>
+            </tr>
+          </tbody>
+        </table>
+        <h3>方案确认文档层</h3>
+        <p>
+          单一真相源负责“状态”和“契约”，但复杂需求在开工前还需要一层可追溯的方案确认文档。它记录的是：某个 Feature 为什么这样做、哪些能力已有、哪些能力要新增、哪些问题已经拍板、哪些内容要同步给其他端。
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>文档</th>
+              <th>承载内容</th>
+              <th>使用方式</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>14_讨论确认与开工门禁</code></td>
+              <td>所有 Feature 对齐后的最终确认、开工前检查项、禁止提前实施的边界。</td>
+              <td>主 Agent 在进入 Goal 前逐条核对，未过门禁不派发代码任务。</td>
+            </tr>
+            <tr>
+              <td><code>15_Web前端对接清单</code></td>
+              <td>固定页面、接口、字段、回填协议、上传能力、恢复逻辑、成功回调。</td>
+              <td>给 Web / H5 同事直接使用，不混入主 Agent 的内部思考。</td>
+            </tr>
+            <tr>
+              <td><code>16 / 17 / 18_专项方案</code></td>
+              <td>路径 A/B 与汇合、第一次开口、会话恢复、最终确认、最终创建。</td>
+              <td>每一趴讨论完成后立即落档，后续实现只按已确认方案执行。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="main-agent">
+        <h2>五、主 Agent 的职责边界</h2>
+        <p>
+          最终版明确把主 Agent 从“写代码的人”变成“系统控制面”。主 Agent 不承担业务功能开发，而是持续维护需求边界、分工、依赖、风险、验收、review、部署节奏和跨 Agent 信息同步。
+        </p>
+        <div class="callout warning">
+          <strong>为什么主 Agent 不直接写业务代码</strong>
+          一旦主 Agent 也下场写主要功能，它就会同时成为规划者、执行者和审核者，容易失去全局视角。复杂需求里更重要的是持续判断：哪个任务可以并行，哪个协议还没冻结，哪个 done 没证据，哪个改动必须回滚。
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>记录面</th>
+              <th>用途</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>主控日志</td>
+              <td>记录主 Agent 的判断、动作、纠偏和下一步。</td>
+            </tr>
+            <tr>
+              <td>协同收发</td>
+              <td>记录下发给子 Agent 的任务、收到的反馈、未闭环事项。</td>
+            </tr>
+            <tr>
+              <td>决策记录</td>
+              <td>记录影响架构、排期、分工、最终归属的明确决策。</td>
+            </tr>
+            <tr>
+              <td>Review 记录</td>
+              <td>记录对子 Agent diff、测试、部署结果的审查意见。</td>
+            </tr>
+            <tr>
+              <td>Run log</td>
+              <td>记录客观命令、代码同步、文件创建、部署命令等流水。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="agent-roles">
+        <h2>六、子 Agent 角色设计</h2>
+        <p>
+          子 Agent 的设计不是按“谁有空”拆，而是按系统边界拆。每个 Agent 只拥有一类决策权和一片写入范围：服务端能力、移动端容器、Agent 编排、Web 页面、测试发布分别独立，主 Agent 负责调度和审查。
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>角色</th>
+              <th>负责什么</th>
+              <th>不负责什么</th>
+              <th>主要交付物</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Backend Agent</td>
+              <td>服务端工具、waiting tool、状态读写、最终创建封装、契约文件、工具单测。</td>
+              <td>不写 H5 页面，不改移动端容器，不直接改线上 Agent 配置。</td>
+              <td>工具实现、schema/fixture、测试结果、服务端变更说明。</td>
+            </tr>
+            <tr>
+              <td>Web H5 Agent</td>
+              <td>启动页、线索页、工具卡渲染、页面 reply、用户回填、前端契约校验。</td>
+              <td>不定义服务端协议，不绕过共享 schema 自造字段。</td>
+              <td>H5 页面、工具卡交互、契约 fixture 回放结果。</td>
+            </tr>
+            <tr>
+              <td>Mobile Container Agent</td>
+              <td>客户端入口切换、WebView 容器、登录态/session 传递、成功回调、回滚开关。</td>
+              <td>不承担最终创建逻辑，不继续依赖本地缓存代替服务端创建。</td>
+              <td>容器改造、客户端自测记录、成功跳转与回滚验证。</td>
+            </tr>
+            <tr>
+              <td>Agent Soul Agent</td>
+              <td>灰度 Agent、Soul/Skill、工具白名单、ToolGuard、流程编排与真实对话调试。</td>
+              <td>不写 Go 工具，不写 H5，不跳过最终确认。</td>
+              <td>Agent 配置、Soul 导出、工具白名单、ToolGuard 规则、调试记录。</td>
+            </tr>
+            <tr>
+              <td>QA Release Agent</td>
+              <td>测试矩阵、E2E、失败路径、测试环境部署、日志检查、独立复核。</td>
+              <td>默认不写功能代码，除非主 Agent 明确授权修复。</td>
+              <td>验收报告、录屏截图、部署记录、独立复跑结论。</td>
+            </tr>
+            <tr>
+              <td>Main Agent</td>
+              <td>需求边界、任务派发、依赖顺序、进度汇总、review、验收门槛、风险升级。</td>
+              <td>不直接承担主要业务功能开发。</td>
+              <td>协同区文档、决策记录、sync-log、review 记录、阶段结论。</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          这种拆法的重点，是让每个 Agent 的“自主空间”刚好落在它能负责到底的区域里。Backend 可以自主推进工具和测试，但不能替 H5 定交互；Mobile 可以处理容器和回调，但不能把最终创建重新拉回客户端；Soul 可以调 prompt 和工具守卫，但不能绕过服务端的状态与创建边界。
+        </p>
+      </section>
+
+      <section id="dispatch">
+        <h2>七、子 Agent 派发模式</h2>
+        <p>
+          最终版不把所有子任务都塞进同一种模式。主 Agent 先判断任务成熟度、风险、依赖和写入范围，再决定派 Explorer、Plan、Goal、Direct Worker 还是 Review。
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>模式</th>
+              <th>适用场景</th>
+              <th>是否改代码</th>
+              <th>产出</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Explorer</td>
+              <td>答案依赖代码细节，例如登录态、上传、历史工具实现。</td>
+              <td>否</td>
+              <td>代码证据、结论、风险。</td>
+            </tr>
+            <tr>
+              <td>Plan</td>
+              <td>需求还不够稳，或涉及协议、架构、跨端边界。</td>
+              <td>默认否</td>
+              <td>方案、文件清单、风险、测试计划。</td>
+            </tr>
+            <tr>
+              <td>Goal</td>
+              <td>目标清楚但链路长，需要连续推进到可验收。</td>
+              <td>是</td>
+              <td>阶段进度、代码、测试、阻塞清单。</td>
+            </tr>
+            <tr>
+              <td>Direct Worker</td>
+              <td>改动小、边界清楚、文件范围明确。</td>
+              <td>是</td>
+              <td>Patch、测试结果。</td>
+            </tr>
+            <tr>
+              <td>Review</td>
+              <td>子 Agent 已提交 diff，需要独立审查。</td>
+              <td>否</td>
+              <td>Findings、测试缺口、是否通过。</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          这种分流的价值，是让“自主推进”不会变成“盲目开工”。协议没冻结就进入 Plan，代码证据不足就进入 Explorer，目标明确且可验收才进入 Goal。
+        </p>
+      </section>
+
+      <section id="communication">
+        <h2>八、通信与进度同步</h2>
+        <p>
+          协同区采用“文件系统作为控制面”的通信方式。聊天可以承载即时讨论，但不作为项目事实来源；真正的任务、反馈、阻塞、证据和决策，都要落到固定文档里。
+        </p>
+        <div class="flow">主 Agent 派发任务
+  → 写入 sync-log
+  → 子 Agent 按任务书 / Goal Plan 执行
+  → 子 Agent 回填任务书或反馈给主 Agent
+  → 主 Agent 记录判断与未闭环项
+  → 更新需求追踪矩阵
+  → 需要审查时进入 Review 记录
+  → 达到门槛后进入集成 / 部署 / 提测</div>
+        <table>
+          <thead>
+            <tr>
+              <th>通信面</th>
+              <th>记录什么</th>
+              <th>主 Agent 怎么用</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>sync/agent-sync-log</code></td>
+              <td>任务下发、反馈接收、信息转发、未闭环事项、主 Agent 判断。</td>
+              <td>作为实时收发台，判断哪些任务 pending、in-progress、blocked、done。</td>
+            </tr>
+            <tr>
+              <td><code>agents/*.md</code></td>
+              <td>每个子 Agent 的目标、边界、文件所有权、Goal Plan、里程碑、验收命令。</td>
+              <td>作为派发载荷和子 Agent 自查表，防止任务越界。</td>
+            </tr>
+            <tr>
+              <td><code>10_需求追踪矩阵</code></td>
+              <td>Feature 状态、Owner、证据、DoD、滚动汇总。</td>
+              <td>把子 Agent 的局部反馈转换成项目级真实进度。</td>
+            </tr>
+            <tr>
+              <td><code>09_主Agent指挥台</code></td>
+              <td>当前阶段、最大风险、下一步、派发模式和 Resume 锚点。</td>
+              <td>让主 Agent 或后续接手者能快速恢复全局视角。</td>
+            </tr>
+            <tr>
+              <td><code>reviews/</code> 与 <code>decisions/</code></td>
+              <td>代码审查、独立复核、架构/排期/边界决策。</td>
+              <td>把“为什么通过/为什么停下”变成可回看的依据。</td>
+            </tr>
+          </tbody>
+        </table>
+        <h3>主 Agent 如何实时获取进度</h3>
+        <p>
+          主 Agent 不靠“感觉”判断进度，而是轮询四类信号：sync-log 的未闭环项、子 Agent 任务书的里程碑、需求矩阵的状态变化、测试/部署/review 的证据。子 Agent 如果通过工具环境支持 Goal 长跑，就按 Goal Plan 连续执行并阶段性回报；如果不支持，也必须按同一结构在任务书和 sync-log 里留下可读状态。
+        </p>
+        <p>
+          进度汇总的基本规则是：子 Agent 的“完成”先进入 <code>in-review</code>，主 Agent 检查改动范围和证据后，必要时派 QA 或 Review Agent 独立复核。只有证据通过，需求矩阵才允许变成 <code>done</code>。
+        </p>
+        <div class="callout">
+          <strong>背后原理</strong>
+          文件系统在这里承担的是“低耦合消息总线 + 审计账本”。它不要求所有 Agent 同时在线，也不依赖某段聊天上下文永远存在。每个 Agent 都可以从固定文档恢复任务，每个状态变化都能被复查，每次越界或阻塞都能被主 Agent 捕捉。
+        </div>
+      </section>
+
+      <section id="alignment">
+        <h2>九、逐点对齐：从需求文档到技术方案</h2>
+        <p>
+          复杂需求最容易失控的阶段，不是写代码，而是讨论时把“产品描述”“已有实现”“推荐方案”“待确认点”混在一起。最终版把讨论过程拆成逐 Feature 的对齐循环：先看原始需求，再对照当前代码能力，最后给出一个主推荐方案和一个备选方案。
+        </p>
+        <div class="flow">原始需求 / 设计稿
+  → 代码现状与线上能力核对
+  → 判断已有、缺失、未确认
+  → 给出推荐方案与备选方案
+  → 用户确认或修正
+  → 写入专项方案 / Web 对接清单 / 契约文档
+  → 更新需求追踪矩阵和开工门禁</div>
+        <table>
+          <thead>
+            <tr>
+              <th>对齐问题</th>
+              <th>主 Agent 要回答什么</th>
+              <th>落到哪里</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>这个 Feature 是否已经存在？</td>
+              <td>指出对应代码、接口、工具、配置或当前缺口，避免重复实现。</td>
+              <td><code>02_现有实现盘点</code>、<code>10_需求追踪矩阵</code></td>
+            </tr>
+            <tr>
+              <td>应该复用旧能力还是新建？</td>
+              <td>从改动小、扩展性、历史干扰、状态边界、测试成本中给出推荐。</td>
+              <td><code>03_技术方案与协议草案</code>、专项方案文档</td>
+            </tr>
+            <tr>
+              <td>Web / H5 需要知道什么？</td>
+              <td>只写前端同事需要实现的接口、字段、状态恢复、页面协议和回调。</td>
+              <td><code>15_Web前端对接清单</code></td>
+            </tr>
+            <tr>
+              <td>Agent 流程应该在哪里控制？</td>
+              <td>区分固定页面、工具协议、服务端状态、Agent workspace 流程脚本。</td>
+              <td><code>16</code>、<code>17</code>、<code>18</code> 专项方案</td>
+            </tr>
+            <tr>
+              <td>什么时候允许开工？</td>
+              <td>确认所有 P0 / P1 方案、契约、状态、日志、验收路径都已闭环。</td>
+              <td><code>14_讨论确认与开工门禁</code></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="callout">
+          <strong>关键点</strong>
+          方案对齐阶段允许充分讨论，但不允许把未确认方案直接变成代码任务。主 Agent 的职责，是把每一次确认转成可执行文档，让后续子 Agent 不依赖聊天记忆，也不会按旧理解开工。
+        </div>
+      </section>
+
+      <section id="execution">
+        <h2>十、从方案到执行：主 Agent 的 Goal 控制台</h2>
+        <p>
+          进入执行前，主 Agent 先把所有已确认方案串成一条实施路线：哪些仓库先动、哪些协议先冻结、哪些任务可以并行、哪些任务必须等依赖完成。Goal 模式不是“放手让 Agent 自己跑”，而是主 Agent 以协同区文档为控制台，持续派发、收敛和验收。
+        </p>
+        <div class="stack">
+          <div class="step">
+            <b>1</b>
+            <div>
+              <h3>锁定执行基线</h3>
+              <p>检查需求矩阵、契约文档、专项方案、开工门禁和风险清单，确认没有“方案未定但已开工”的项。</p>
+            </div>
+          </div>
+          <div class="step">
+            <b>2</b>
+            <div>
+              <h3>拆分可并行任务</h3>
+              <p>按服务端、Web 对接、Agent workspace、测试部署、OpenCLI 沉淀等边界拆分，避免用功能名粗暴切分。</p>
+            </div>
+          </div>
+          <div class="step">
+            <b>3</b>
+            <div>
+              <h3>选择派发模式</h3>
+              <p>成熟任务进入 Goal，未知链路先 Explorer，跨端协议先 Plan，小修小补才 Direct Worker。</p>
+            </div>
+          </div>
+          <div class="step">
+            <b>4</b>
+            <div>
+              <h3>维护同步账本</h3>
+              <p>子 Agent 的阶段结果进入 sync-log；主 Agent 追加判断、阻塞处理、下一步、是否允许继续推进。</p>
+            </div>
+          </div>
+          <div class="step">
+            <b>5</b>
+            <div>
+              <h3>把局部完成翻译成项目状态</h3>
+              <p>子 Agent 报完成不等于 Feature 完成。主 Agent 要检查 diff、测试、日志和验收证据，再更新需求矩阵。</p>
+            </div>
+          </div>
+        </div>
+        <p>
+          主 Agent 保留的核心权力包括：契约冻结、文件所有权调整、跨 Agent 冲突仲裁、集成顺序、部署节奏、验收口径和回滚判断。可以放权给子 Agent 的，是边界清楚的实现细节、局部测试修复和已冻结协议下的代码落地。
+        </p>
+      </section>
+
+      <section id="evidence-loop">
+        <h2>十一、子 Agent 反馈如何被验收</h2>
+        <p>
+          子 Agent 的反馈必须能被复查，而不是只给一句“完成”。任务书要求每次回报都包含：改动文件、执行命令、输出摘要、失败项、剩余风险、下一步建议和是否需要主 Agent 决策。
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>反馈内容</th>
+              <th>主 Agent 的处理方式</th>
+              <th>结果</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>改动文件与分支</td>
+              <td>核对是否越过文件 owner，是否触碰未授权模块。</td>
+              <td>通过、要求拆分、或暂停合并。</td>
+            </tr>
+            <tr>
+              <td>命令与测试输出</td>
+              <td>检查是否覆盖对应 DoD，必要时亲自复跑关键命令。</td>
+              <td>进入 in-review 或退回修复。</td>
+            </tr>
+            <tr>
+              <td>日志与真实环境证据</td>
+              <td>用测试环境日志、接口返回、页面回放或截图确认链路真实经过。</td>
+              <td>作为需求矩阵 done 的证据附件。</td>
+            </tr>
+            <tr>
+              <td>阻塞与假设</td>
+              <td>判断是否可逆；可逆则登记默认假设继续，不可逆则升级确认。</td>
+              <td>继续执行或停在门禁。</td>
+            </tr>
+            <tr>
+              <td>部署与 OpenCLI 操作</td>
+              <td>把临时学到的部署、查日志、验收命令固化成手册条目。</td>
+              <td>下一次执行不再依赖浏览器记忆或口头经验。</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="callout warning">
+          <strong>验收不是复述反馈</strong>
+          主 Agent 要把子 Agent 的局部结果转换成三类结论：能否合并、能否进入下一依赖、能否改变需求矩阵状态。缺少任一类证据，都只能算阶段反馈，不能算完成。
+        </div>
+      </section>
+
+      <section id="goal">
+        <h2>十二、Goal 模式如何安全长跑</h2>
+        <p>
+          Goal 模式的本质，是让 Agent 在较长链路里连续推进。但连续推进必须有刹车、有账本、有恢复点，否则很容易在无人值守时越跑越偏。
+        </p>
+        <div class="stack">
+          <div class="step">
+            <b>1</b>
+            <div>
+              <h3>Resume 锚点</h3>
+              <p>上下文丢失后，从主控状态、需求追踪矩阵、协同收发日志和假设登记册恢复，而不是从聊天记忆里猜。</p>
+            </div>
+          </div>
+          <div class="step">
+            <b>2</b>
+            <div>
+              <h3>自主决策分流</h3>
+              <p>可逆决策可以按默认假设自走并登记；不可逆决策必须停下升级，例如动线上 Agent、动数据模型、删改用户数据、发布。</p>
+            </div>
+          </div>
+          <div class="step">
+            <b>3</b>
+            <div>
+              <h3>明确升级阈值</h3>
+              <p>同一节点两次失败、修复后测试仍红、同文件冲突、30 分钟无可验收进展、触及敏感数据，都必须停止并升级。</p>
+            </div>
+          </div>
+          <div class="step">
+            <b>4</b>
+            <div>
+              <h3>证据化完成</h3>
+              <p>每个节点反馈必须包含改动文件、验收命令、输出摘要、剩余风险和分支/提交。没有绿色证据，不允许标 done。</p>
+            </div>
+          </div>
+          <div class="step">
+            <b>5</b>
+            <div>
+              <h3>独立验证</h3>
+              <p>子 Agent 报通过后，主 Agent 不能只接受口头结论。关键节点需要另派 Review/Explorer 复跑验收或复核证据。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="contract">
+        <h2>十三、契约冻结：把“共识”变成可执行文件</h2>
+        <p>
+          跨端需求里，最危险的不是代码不会写，而是协议被不同端各自理解。最终版要求：协议冻结不能停留在文档里的“字段说明”，必须落成共享 schema、合法/非法 fixture、双向测试和签收记录。
+        </p>
+        <div class="flow">协议草案
+  → 共享 schema 文件
+  → 双向 fixture
+  → Backend 契约测试
+  → H5 契约测试
+  → 消费方签收
+  → 进入并行实现</div>
+        <p>
+          这样做的结果是，协议争议从“谁记得对”变成“哪条 fixture 红了”。这会显著降低跨端并行时的沟通成本，也让外部 Web 实现没有准备好时，后端仍然可以用契约 stub 跑通主要工具流。
+        </p>
+      </section>
+
+      <section id="integration">
+        <h2>十四、集成与回滚：先定义安全态，再并行提速</h2>
+        <p>
+          多 Agent 并行开发不能只看谁先写完。最终版先确定文件所有权、分支隔离、集成 DAG 和回滚安全态，再允许子 Agent 开始写代码。
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>机制</th>
+              <th>做法</th>
+              <th>解决的问题</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>文件所有权</td>
+              <td>一个文件只有一个写 owner，其他 Agent 只能提 patch 请求。</td>
+              <td>避免同仓同文件冲突。</td>
+            </tr>
+            <tr>
+              <td>Worktree 隔离</td>
+              <td>每个子 Agent 独立 worktree、独立分支，集成分支由主 Agent 持有。</td>
+              <td>避免并行开发互相污染工作区。</td>
+            </tr>
+            <tr>
+              <td>合并顺序</td>
+              <td>契约先行，然后后端、Agent 配置、Web、客户端，最后集成分支跑 E2E。</td>
+              <td>让依赖从稳定底座往上叠。</td>
+            </tr>
+            <tr>
+              <td>回滚安全态</td>
+              <td>旧流程保留，新工具可摘除，灰度 Agent 可停用，客户端入口有开关。</td>
+              <td>集成失败时能回到已知绿色点。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="acceptance">
+        <h2>十五、验收：体验目标也要有证据</h2>
+        <p>
+          复杂需求常见误区是只验证后端管道，却忽略产品目标。最终版把验收分成两层：一层是工程可执行测试，另一层是体验级走查。
+        </p>
+        <div class="grid">
+          <div class="card">
+            <h3>工程验收</h3>
+            <p>契约测试、工具单测、状态流转、等待工具回填、最终创建幂等、客户端容器自测、测试环境部署验证。</p>
+          </div>
+          <div class="card">
+            <h3>体验验收</h3>
+            <p>两条主链路录屏，关键步骤截图，逐步成形的过程可感知，失败路径的兜底用户能理解。</p>
+          </div>
+        </div>
+        <div class="callout danger">
+          <strong>验收标准</strong>
+          后端绿测不等于需求完成。只有 Feature 矩阵里的 P0 项目达到 done，且对应证据可打开、体验走查也留证，才算具备提测基础。
+        </div>
+      </section>
+
+      <section id="rationale">
+        <h2>十六、这些设计背后的原因</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>风险</th>
+              <th>最终设计</th>
+              <th>思路</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>状态分散</td>
+              <td>需求追踪矩阵作为完成情况唯一入口。</td>
+              <td>状态必须集中，否则越多人协同，越难判断真实进度。</td>
+            </tr>
+            <tr>
+              <td>协议漂移</td>
+              <td>共享 schema + fixture + 契约检查命令。</td>
+              <td>文档共识不足以约束实现，必须让代码能检查协议。</td>
+            </tr>
+            <tr>
+              <td>无人时卡死</td>
+              <td>可逆假设自走，不可逆决策升级。</td>
+              <td>Goal 模式需要自主性，但自主性必须被可逆性约束。</td>
+            </tr>
+            <tr>
+              <td>外部依赖阻塞</td>
+              <td>契约 stub 与测试环境实测通道并行存在。</td>
+              <td>真实页面没到位时，仍要能验证核心工具流。</td>
+            </tr>
+            <tr>
+              <td>同仓并行冲突</td>
+              <td>文件 owner、worktree 隔离、主 Agent 集成。</td>
+              <td>并行不是共享编辑，必须先建立物理隔离和合并秩序。</td>
+            </tr>
+            <tr>
+              <td>子 Agent 进度不透明</td>
+              <td>sync-log、任务书、需求矩阵三层同步。</td>
+              <td>局部进度必须被翻译成项目级状态，否则主 Agent 无法实时指挥。</td>
+            </tr>
+            <tr>
+              <td>口头完成</td>
+              <td>done 必须带绿色证据，关键节点独立复核。</td>
+              <td>验收要从“相信 Agent”变成“检查证据”。</td>
+            </tr>
+            <tr>
+              <td>出错无法退</td>
+              <td>每个维度定义安全态和回滚动作。</td>
+              <td>高压排期里可以快，但必须知道退到哪里。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="checklist">
+        <h2>十七、可复用落地清单</h2>
+        <p>
+          这套框架可以复用到任何跨端、跨仓库、跨 Agent 的复杂需求。启动前先检查下面这些条件，满足后再进入真正的代码开发。
+        </p>
+        <div class="checklist">
+          <div class="check">需求 Feature 已拆到可验收颗粒度。</div>
+          <div class="check">完成情况有唯一矩阵，不散落在多个文档。</div>
+          <div class="check">跨端协议有 schema、fixture 和检查命令。</div>
+          <div class="check">每个讨论结论已落到专项方案或开工门禁。</div>
+          <div class="check">Web / H5 对接清单只包含外部同事需要的信息。</div>
+          <div class="check">每个子 Agent 有明确 owner、边界和禁区。</div>
+          <div class="check">每个子 Agent 有固定任务书和回填格式。</div>
+          <div class="check">每个写文件范围有唯一写 owner。</div>
+          <div class="check">主 Agent 能从 sync-log 和矩阵实时读取进度。</div>
+          <div class="check">Goal 任务有 Resume 锚点和升级阈值。</div>
+          <div class="check">外部依赖有 stub 或替代验证通道。</div>
+          <div class="check">集成分支、合并顺序和回滚安全态已定义。</div>
+          <div class="check">done 标准绑定证据，而不是绑定口头进度。</div>
+          <div class="check">主 Agent 有日志、收发、决策、review 四套记录面。</div>
+        </div>
+      </section>
+
+      <footer>
+        本文是对一套多 Agent 协同区最终实现方式的整理。内容已抽象处理，保留方法、结构和工程判断，不暴露私有路径、内部域名、账号、密钥或部署细节。
+      </footer>
+    </main>
+
+    <aside class="outline" aria-label="文章目录">
+      <p class="label">Outline</p>
+      <a href="#summary">核心结论</a>
+      <a href="#design">设计目标</a>
+      <a href="#structure">文件系统组织</a>
+      <a href="#ssot">单一真相源</a>
+      <a href="#main-agent">主 Agent</a>
+      <a href="#agent-roles">子 Agent 角色</a>
+      <a href="#dispatch">派发模式</a>
+      <a href="#communication">通信同步</a>
+      <a href="#alignment">逐点对齐</a>
+      <a href="#execution">执行控制</a>
+      <a href="#evidence-loop">反馈验收</a>
+      <a href="#goal">Goal 模式</a>
+      <a href="#contract">契约冻结</a>
+      <a href="#integration">集成回滚</a>
+      <a href="#acceptance">验收证据</a>
+      <a href="#rationale">设计原因</a>
+      <a href="#checklist">落地清单</a>
+    </aside>
+  </div>
+</body>
+</html>
